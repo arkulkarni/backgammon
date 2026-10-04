@@ -2434,7 +2434,7 @@ function dragCleanup(){
 /* ---------- game / match end ---------- */
 function celebrateVictory(){
   const box=$('confetti');
-  if(!box||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  if(!box||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return 0;
   clearTimeout(celebrateVictory._h);
   box.innerHTML='';box.hidden=false;
   const colors=['#ffd12e','#f6d36a','#ef5b45','#ff9071','#f6f2e9','#38a47b','#50b7c8','#587dd4','#b565cf'];
@@ -2465,7 +2465,9 @@ function celebrateVictory(){
     piece.style.setProperty('--delay',(Math.random()*1.15)+'s');
     box.appendChild(piece);
   }
-  celebrateVictory._h=setTimeout(()=>{box.hidden=true;box.innerHTML='';},7800);
+  const durationMs=7800;
+  celebrateVictory._h=setTimeout(()=>{box.hidden=true;box.innerHTML='';},durationMs);
+  return durationMs;
 }
 function analysisSummary(side){
   const rows=GAME.record.filter(r=>r.side===side&&r.analysis);
@@ -2656,7 +2658,8 @@ async function showResultDialog(){
 function endGame(winner){
   finishCurrentTurnRecord();GAME.phase='over';bumpToken();clearHL();syncUI();
   const info=gammonInfo(GAME.state,winner),pts=info.mult;GAME.scores[winner]+=pts;updatePanel();
-  if(winner===GAME.sideHuman){Snd.win();celebrateVictory();}else Snd.lose();
+  let resultDelay=700;
+  if(winner===GAME.sideHuman){Snd.win();resultDelay=celebrateVictory()||resultDelay;}else Snd.lose();
   const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp,you=GAME.scores[GAME.sideHuman],opp=GAME.scores[GAME.sideAI];
   GAME.lastResult={winner,name:wname,you,opp,matchOver:you>=GAME.matchTo||opp>=GAME.matchTo,state:cloneState(GAME.state),info};
   const won=winner===GAME.sideHuman;
@@ -2667,7 +2670,7 @@ function endGame(winner){
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
   if(GAME.pastGames.length>10)GAME.pastGames.length=10;
-  sleep(700).then(()=>{if(GAME.phase==='over')showResultDialog();});
+  sleep(resultDelay).then(()=>{if(GAME.phase==='over')showResultDialog();});
 }
 /* ---------- orientation gate ---------- */
 const orientationMedia=window.matchMedia?window.matchMedia('(orientation: portrait)'):null;
