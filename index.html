@@ -1599,7 +1599,7 @@ const GAME={
   selected:null,destsNow:[],sourcesNow:[],record:[],turnStart:null,turnMoves:[],turnRecorded:false,lastResult:null,replayIndex:0,
   pastGames:[],reviewReturn:null,
 };
-const PREF={diff:'expert',matchTo:1,nameYou:'You',nameOpp:'Computer',humanBlack:true,tutor:false};
+const PREF={diff:'expert',matchTo:1,nameYou:'You',humanBlack:true,tutor:false};
 const overlay=$('overlay'),overlayCard=$('overlayCard'),btnRoll=$('btnRoll');
 function bumpToken(){GAME.token++;}
 function toast(msg,ms){
@@ -1683,10 +1683,6 @@ function showSetup(){
        <div class="fieldWrap"><label>NAME</label><input id="fYou" maxlength="14" value="${escAttr(PREF.nameYou)}"></div>
        <button class="swapBtn" id="swapColors" title="Swap colors">&#8645;</button>
      </div>
-     <div class="nameRow">
-       <button class="colorBtn ${PREF.humanBlack?'white':'black'}" id="cOpp" title="Opponent checker color"></button>
-       <div class="fieldWrap"><label>OPPONENT</label><input id="fOpp" maxlength="14" value="${escAttr(PREF.nameOpp)}"></div>
-     </div>
      <div class="setRow"><div class="setLabel">DIFFICULTY</div>
        <div class="pillRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}, approximately ${tier.elo} Elo"><span class="tierName">${tier.label}</span><small class="tierElo">~${tier.elo}</small></button>`).join('')}</div>
      </div>
@@ -1700,8 +1696,8 @@ function showSetup(){
     Snd.opening();
     GAME.difficulty=PREF.diff;GAME.matchTo=PREF.matchTo;
     GAME.nameYou=cleanName($('fYou').value)||'You';
-    GAME.nameOpp=cleanName($('fOpp').value)||'Computer';
-    PREF.nameYou=GAME.nameYou;PREF.nameOpp=GAME.nameOpp;
+    GAME.nameOpp='Computer';
+    PREF.nameYou=GAME.nameYou;
     GAME.sideHuman=PREF.humanBlack?'b':'w';
     GAME.sideAI=other(GAME.sideHuman);
     hideOverlay();startMatch();
@@ -1715,11 +1711,9 @@ function showSetup(){
     overlayCard.querySelectorAll('[data-mt]').forEach(x=>x.classList.toggle('sel',x===el));
   });
   $('fYou').oninput=()=>{PREF.nameYou=$('fYou').value;};
-  $('fOpp').oninput=()=>{PREF.nameOpp=$('fOpp').value;};
   const flip=()=>{PREF.humanBlack=!PREF.humanBlack;Snd.pick();
-    $('cYou').className='colorBtn '+(PREF.humanBlack?'black':'white');
-    $('cOpp').className='colorBtn '+(PREF.humanBlack?'white':'black');};
-  $('swapColors').onclick=flip;$('cYou').onclick=flip;$('cOpp').onclick=flip;
+    $('cYou').className='colorBtn '+(PREF.humanBlack?'black':'white');};
+  $('swapColors').onclick=flip;$('cYou').onclick=flip;
 }
 function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function cleanName(s){return String(s||'').trim().slice(0,14);}
@@ -1733,13 +1727,18 @@ function openArchivedGame(index){
   };
   GAME.record=JSON.parse(JSON.stringify(archived.record));
   GAME.lastResult=JSON.parse(JSON.stringify(archived.lastResult));
-  GAME.nameYou=archived.nameYou;GAME.nameOpp=archived.nameOpp;
+  GAME.nameYou=archived.nameYou;GAME.nameOpp='Computer';
   GAME.sideHuman=archived.sideHuman;GAME.sideAI=archived.sideAI;
   refreshIdentity();hideOverlay();showReplay(0);
 }
-function pastGamesHtml(){
-  if(!GAME.pastGames.length)return'<div class="pastGames"><h3>PAST GAMES</h3><div class="pastEmpty">No completed games this session</div></div>';
-  return`<div class="pastGames"><h3>PAST GAMES · THIS SESSION</h3>${GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(g.dateLabel)} · Open review</span></button>`).join('')}</div>`;
+function pastGamesListHtml(){
+  if(!GAME.pastGames.length)return'<div class="pastEmpty">No completed games this session</div>';
+  return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(g.dateLabel)} · Open review</span></button>`).join('');
+}
+function showPastGames(){
+  showOverlay(`<h2>Past Games</h2><div class="pastGames">${pastGamesListHtml()}</div><button class="pbtn" id="pgBack">BACK</button>`,'modalCard menuList');
+  $('pgBack').onclick=()=>{Snd.btn();openMenu();};
+  overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
 function openMenu(){
   const engine=window.GNUbgEvaluator,engineReady=!!(engine&&engine.ready);
@@ -1749,7 +1748,7 @@ function openMenu(){
     <button class="pbtn" id="mResume">RESUME</button>
     <button class="pbtn" id="mNew">NEW MATCH</button>
     <button class="pbtn" id="mRules">RULES</button>
-    ${pastGamesHtml()}
+    <button class="pbtn" id="mPastGames">PAST GAMES</button>
     <div class="toggleRow"><div><b>Fullscreen</b><div class="dim" id="fsStatus">${fsAvailable?'Fill the iPad display':'Not available in this browser'}</div></div><button class="switch${fsOn?' on':''}" id="mFullscreen" role="switch" aria-label="Fullscreen" aria-checked="${fsOn}"${fsAvailable?'':' disabled'}></button></div>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
@@ -1757,9 +1756,9 @@ function openMenu(){
   $('mResume').onclick=()=>{Snd.btn();hideOverlay();};
   $('mNew').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
+  $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
   wireFullscreenControl($('mFullscreen'));
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
-  overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
 function showRules(){
   showOverlay(`<h2>How to play</h2><ul class="helpList">
@@ -2511,7 +2510,7 @@ function finishReview(){
   if(GAME.reviewReturn){
     const back=GAME.reviewReturn;GAME.reviewReturn=null;
     GAME.state=back.state?cloneState(back.state):null;GAME.record=back.record;GAME.lastResult=back.lastResult;
-    GAME.nameYou=back.nameYou;GAME.nameOpp=back.nameOpp;GAME.sideHuman=back.sideHuman;GAME.sideAI=back.sideAI;GAME.phase=back.phase;
+    GAME.nameYou=back.nameYou;GAME.nameOpp='Computer';GAME.sideHuman=back.sideHuman;GAME.sideAI=back.sideAI;GAME.phase=back.phase;
     refreshIdentity();hideOverlay();if(GAME.state){layout(GAME.state,false);updatePanel();syncUI();}openMenu();return;
   }
   GAME.state=cloneState(GAME.lastResult.state);
@@ -2761,8 +2760,9 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
  * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
  * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
  * modify backgammon.html. It monkey-patches two globals at load:
- *   - window.endGame        -> after a game ends, queue a Firestore save
- *   - window.pastGamesHtml  -> render cloud games + unsaved session games
+ *   - window.endGame           -> after a game ends, queue a Firestore save
+ *   - window.pastGamesListHtml -> render cloud games + unsaved session games
+ *     inside the dedicated Past Games screen (Menu -> PAST GAMES button)
  * plus one delegated document click listener for [data-cloudgame] buttons.
  *
  * FAILURE MODE: anything Firebase-related that fails (CDN unreachable, auth
@@ -2810,14 +2810,14 @@ function hookGame(){
       window.endGame=wEnd;
     }
 
-    var origHtml=window.pastGamesHtml;
-    if(typeof origHtml==='function'&&!origHtml.__bgWrapped){
-      var wHtml=function(){
-        try{return mergedPastGamesHtml();}catch(e){return origHtml();}
+    var origList=window.pastGamesListHtml;
+    if(typeof origList==='function'&&!origList.__bgWrapped){
+      var wList=function(){
+        try{return mergedPastGamesListHtml();}catch(e){return origList();}
       };
-      wHtml.__bgWrapped=true;
-      wHtml.__bgOrig=origHtml;
-      window.pastGamesHtml=wHtml;
+      wList.__bgWrapped=true;
+      wList.__bgOrig=origList;
+      window.pastGamesListHtml=wList;
     }
 
     document.addEventListener('click',onDocClick);
@@ -2850,16 +2850,18 @@ function openCloudGame(entry){
   };
   GAME.record=JSON.parse(JSON.stringify(entry.record));
   GAME.lastResult=JSON.parse(JSON.stringify(entry.lastResult));
-  GAME.nameYou=entry.nameYou;GAME.nameOpp=entry.nameOpp;
+  GAME.nameYou=entry.nameYou;GAME.nameOpp='Computer'; // opponent name is locked
   GAME.sideHuman=entry.sideHuman;GAME.sideAI=entry.sideAI;
   refreshIdentity();hideOverlay();showReplay(0);
 }
 
 /* Cloud entries first (newest first), then session entries not yet saved.
- * When Firebase is down / not loaded, GAME.cloudGames is empty and this
- * delegates to the original renderer, so output is pixel-identical. */
-function mergedPastGamesHtml(){
-  var orig=window.pastGamesHtml.__bgOrig;
+ * Renders the inner list for the dedicated Past Games screen (the screen
+ * itself wraps this in <div class="pastGames">). When Firebase is down /
+ * not loaded, GAME.cloudGames is empty and this delegates to the original
+ * renderer, so output is pixel-identical. */
+function mergedPastGamesListHtml(){
+  var orig=window.pastGamesListHtml.__bgOrig;
   var cloud=GAME.cloudGames||[];
   if(!cloud.length)return orig();
   var cloudSync={};
@@ -2875,7 +2877,7 @@ function mergedPastGamesHtml(){
   }
   var all=cloudBtns.concat(sessionBtns);
   if(!all.length)return orig();
-  return '<div class="pastGames"><h3>PAST GAMES</h3>'+all.join('')+'</div>';
+  return all.join('');
 }
 
 /* ---------------- Firestore save / load ---------------- */
