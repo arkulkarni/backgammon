@@ -431,13 +431,7 @@ svg text{pointer-events:none;}
   .reviewCounter{margin-bottom:3px;}
 }
 </style>
-<link rel="manifest" href="manifest.json" />
-<link rel="apple-touch-icon" href="apple-touch-icon.png" />
-<meta name="mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Backgammon" />
-</head>
+<link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Backgammon"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head>
 <body>
 <div id="app">
   <div id="playArea">
@@ -2751,6 +2745,265 @@ function init(){
 }
 init();
 window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
+</script>
+<script>
+/* BackgammonCloud: Firebase past-game sync (injected at deploy time) */
+/* Backgammon <-> Firebase Firestore sync.
+ *
+ * WHAT: saves every completed game to the signed-in user's private Firestore
+ * collection and merges those cloud games into the menu's PAST GAMES section.
+ * Tapping a cloud entry opens the existing Game Review replay, exactly like a
+ * session entry.
+ *
+ * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
+ * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
+ * modify backgammon.html. It monkey-patches two globals at load:
+ *   - window.endGame        -> after a game ends, queue a Firestore save
+ *   - window.pastGamesHtml  -> render cloud games + unsaved session games
+ * plus one delegated document click listener for [data-cloudgame] buttons.
+ *
+ * FAILURE MODE: anything Firebase-related that fails (CDN unreachable, auth
+ * failure, Firestore errors) leaves the game behaving exactly as before:
+ * session-only Past Games, no UI, no popups, at most one console.warn.
+ */
+(function(){
+'use strict';
+if(window.__bgFirebaseSyncLoaded)return;
+window.__bgFirebaseSyncLoaded=true;
+
+/* ---------------- config ---------------- */
+var FB_SDK_VER='10.14.1';
+var FB_CONFIG={
+  apiKey:"AIzaSyBwsNb0nfuF4udrtc1-hb-2t3d4UxjLNSc",
+  authDomain:"backgammon-52682.firebaseapp.com",
+  projectId:"backgammon-52682",
+  storageBucket:"backgammon-52682.firebasestorage.app",
+  messagingSenderId:"652678845411",
+  appId:"1:652678845411:web:4bb276b711efcbbe96c6d6"
+};
+
+var warned=false;
+function warnOnce(msg){
+  if(warned)return;warned=true;
+  try{console.warn('[bg-firebase-sync] '+msg);}catch(e){}
+}
+
+var state={ready:false,uid:null,db:null};
+
+/* ---------------- game hooks (installed synchronously, always safe) ---------------- */
+function hookGame(){
+  try{
+    if(typeof GAME==='undefined'||!GAME)return false;
+    if(!GAME.cloudGames)GAME.cloudGames=[];
+
+    var origEnd=window.endGame;
+    if(typeof origEnd==='function'&&!origEnd.__bgWrapped){
+      var wEnd=function(winner){
+        var r=origEnd.apply(this,arguments);
+        try{onGameEnded();}catch(e){}
+        return r;
+      };
+      wEnd.__bgWrapped=true;
+      window.endGame=wEnd;
+    }
+
+    var origHtml=window.pastGamesHtml;
+    if(typeof origHtml==='function'&&!origHtml.__bgWrapped){
+      var wHtml=function(){
+        try{return mergedPastGamesHtml();}catch(e){return origHtml();}
+      };
+      wHtml.__bgWrapped=true;
+      wHtml.__bgOrig=origHtml;
+      window.pastGamesHtml=wHtml;
+    }
+
+    document.addEventListener('click',onDocClick);
+    return true;
+  }catch(e){return false;}
+}
+
+function onGameEnded(){
+  if(!GAME.pastGames||!GAME.pastGames.length)return;
+  var entry=GAME.pastGames[0];
+  if(entry._syncId)return; // double-invocation guard
+  entry._syncId='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
+  saveGame(entry);
+}
+
+function onDocClick(ev){
+  var t=ev&&ev.target&&ev.target.closest?ev.target.closest('[data-cloudgame]'):null;
+  if(!t)return;
+  var entry=(GAME.cloudGames||[])[Number(t.getAttribute('data-cloudgame'))];
+  if(!entry||!entry.record)return;
+  try{if(typeof Snd!=='undefined')Snd.btn();}catch(e){}
+  try{openCloudGame(entry);}catch(e){}
+}
+
+/* Mirrors the game's own openArchivedGame, but reads from a cloud entry. */
+function openCloudGame(entry){
+  GAME.reviewReturn={
+    state:GAME.state?cloneState(GAME.state):null,record:GAME.record,lastResult:GAME.lastResult,
+    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,phase:GAME.phase
+  };
+  GAME.record=JSON.parse(JSON.stringify(entry.record));
+  GAME.lastResult=JSON.parse(JSON.stringify(entry.lastResult));
+  GAME.nameYou=entry.nameYou;GAME.nameOpp=entry.nameOpp;
+  GAME.sideHuman=entry.sideHuman;GAME.sideAI=entry.sideAI;
+  refreshIdentity();hideOverlay();showReplay(0);
+}
+
+/* Cloud entries first (newest first), then session entries not yet saved.
+ * When Firebase is down / not loaded, GAME.cloudGames is empty and this
+ * delegates to the original renderer, so output is pixel-identical. */
+function mergedPastGamesHtml(){
+  var orig=window.pastGamesHtml.__bgOrig;
+  var cloud=GAME.cloudGames||[];
+  if(!cloud.length)return orig();
+  var cloudSync={};
+  cloud.forEach(function(e){if(e.syncId)cloudSync[e.syncId]=1;});
+  var cloudBtns=cloud.map(function(g,i){
+    return '<button class="pastGameBtn" data-cloudgame="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>';
+  });
+  var sessionBtns=[];
+  for(var i=0;i<GAME.pastGames.length;i++){
+    var g=GAME.pastGames[i];
+    if(g._syncId&&cloudSync[g._syncId])continue; // already shown in cloud list
+    sessionBtns.push('<button class="pastGameBtn" data-past="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>');
+  }
+  var all=cloudBtns.concat(sessionBtns);
+  if(!all.length)return orig();
+  return '<div class="pastGames"><h3>PAST GAMES</h3>'+all.join('')+'</div>';
+}
+
+/* ---------------- Firestore save / load ---------------- */
+function num(n){return typeof n==='number'&&isFinite(n)?n:null;}
+
+function buildDoc(entry){
+  var lr=entry.lastResult||{};
+  var tierKey=null,tierLabel=null,tierElo=null;
+  try{
+    tierKey=GAME.difficulty||null;
+    var tier=(typeof AI_TIERS!=='undefined')&&tierKey?AI_TIERS[tierKey]:null;
+    if(tier){tierLabel=tier.label;tierElo=tier.elo;}
+  }catch(e){}
+  var acc=null;
+  try{
+    var pick=function(s){
+      return s?{total:num(s.total),brilliant:s.brilliant,mistakes:s.mistakes,blunders:s.blunders,accuracy:s.accuracy}:null;
+    };
+    // NOTE: rows without computed analysis are excluded by analysisSummary;
+    // accuracy may be null if the evaluator had not run by game end. Replay
+    // recomputes analysis on demand via analyzeMissingRecords().
+    acc={you:pick(humanAnalysisSummary()),opp:pick(analysisSummary(GAME.sideAI))};
+  }catch(e){acc=null;}
+  return {
+    syncId:entry._syncId,
+    createdAt:firebase.firestore.FieldValue.serverTimestamp(),
+    appVersion:1,
+    result:entry.resultLabel,resultLabel:entry.resultLabel,scoreLabel:entry.scoreLabel,
+    scores:{you:lr.you!=null?lr.you:null,opp:lr.opp!=null?lr.opp:null},
+    winner:lr.winner||null,matchOver:!!lr.matchOver,
+    difficulty:tierKey,difficultyLabel:tierLabel,difficultyElo:tierElo,
+    nameYou:entry.nameYou,nameOpp:entry.nameOpp,
+    sideHuman:entry.sideHuman,sideAI:entry.sideAI,
+    accuracy:acc,
+    record:entry.record,     // full replay record (moves, dice, board states)
+    lastResult:lr,           // includes final board state + scores
+    dateLabel:entry.dateLabel
+  };
+}
+
+function cloudViewOf(entry,cloudId){
+  return {
+    cloudId:cloudId,syncId:entry._syncId,
+    record:entry.record,lastResult:entry.lastResult,
+    nameYou:entry.nameYou,nameOpp:entry.nameOpp,
+    sideHuman:entry.sideHuman,sideAI:entry.sideAI,
+    resultLabel:entry.resultLabel,scoreLabel:entry.scoreLabel,
+    dateLabel:entry.dateLabel
+  };
+}
+
+function saveGame(entry){
+  if(!state.ready||!state.db||!state.uid)return; // not ready: stays session-only
+  var doc;
+  try{doc=buildDoc(entry);}catch(e){warnOnce('could not build save record');return;}
+  try{
+    state.db.collection('users').doc(state.uid).collection('games').add(doc).then(function(ref){
+      entry._cloudId=ref.id;
+      GAME.cloudGames.unshift(cloudViewOf(entry,ref.id));
+    },function(err){
+      warnOnce('save failed; game kept for this session only');
+    });
+  }catch(e){warnOnce('save failed; game kept for this session only');}
+}
+
+function fmtDate(ts){
+  try{
+    var d=(ts&&typeof ts.toDate==='function')?ts.toDate():(ts instanceof Date?ts:null);
+    if(!d)return '';
+    return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(d);
+  }catch(e){return '';}
+}
+
+function loadCloudGames(){
+  if(!state.ready||!state.db||!state.uid)return;
+  state.db.collection('users').doc(state.uid).collection('games')
+    .orderBy('createdAt','desc').limit(50).get()
+    .then(function(snap){
+      var list=[];
+      snap.forEach(function(doc){
+        var d=doc.data()||{};
+        if(!d.record||!d.lastResult)return; // skip corrupt docs
+        list.push({
+          cloudId:doc.id,syncId:d.syncId||null,
+          record:d.record,lastResult:d.lastResult,
+          nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
+          sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
+          resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
+          dateLabel:d.dateLabel||fmtDate(d.createdAt)
+        });
+      });
+      GAME.cloudGames=list;
+    },function(err){
+      warnOnce('could not load cloud games; showing session history only');
+    });
+}
+
+/* ---------------- Firebase boot (fully silent on failure) ---------------- */
+function loadScript(src){
+  return new Promise(function(res,rej){
+    var s=document.createElement('script');
+    s.src=src;s.async=true;
+    s.onload=function(){res();};
+    s.onerror=function(){rej(new Error('script load failed'));};
+    document.head.appendChild(s);
+  });
+}
+
+function boot(){
+  var base='https://www.gstatic.com/firebasejs/'+FB_SDK_VER+'/';
+  var chain=loadScript(base+'firebase-app-compat.js')
+    .then(function(){return loadScript(base+'firebase-auth-compat.js');})
+    .then(function(){return loadScript(base+'firebase-firestore-compat.js');})
+    .then(function(){
+      if(!window.firebase||!firebase.firestore||!firebase.auth)throw new Error('sdk incomplete');
+      firebase.initializeApp(FB_CONFIG);
+      state.db=firebase.firestore();
+      return firebase.auth().signInAnonymously();
+    })
+    .then(function(cred){
+      state.uid=cred.user.uid;
+      state.ready=true;
+      loadCloudGames();
+    });
+  chain.then(null,function(err){warnOnce('unavailable; using session-only history');});
+}
+
+/* ---------------- go ---------------- */
+if(hookGame()){boot();}
+})();
+
 </script>
 </body>
 </html>
