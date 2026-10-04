@@ -232,8 +232,8 @@ body.reviewing #reviewTimelineDock{
   box-shadow:0 18px 60px rgba(0,0,0,.6);}
 .woodHead{
   background:linear-gradient(180deg,#8a4a24,#5c2d12); padding:12px 14px 18px;
-  display:grid; grid-template-columns:1fr 1fr; grid-template-rows:auto auto;
-  column-gap:14px; row-gap:10px; align-items:start; text-align:center;
+  display:grid; grid-template-columns:1fr auto auto 1fr; grid-template-rows:auto auto;
+  column-gap:8px; row-gap:10px; align-items:start; text-align:center;
   box-shadow:inset 0 -4px 12px rgba(0,0,0,.35);
 }
 .title3d{
@@ -246,6 +246,10 @@ body.reviewing #reviewTimelineDock{
 }
 .headBtn{position:static; padding:10px 22px; font-size:14px;}
 .headBtn.back{justify-self:start; border-color:#4f170f; background:linear-gradient(180deg,#8c3325 0%,#6d2118 52%,#4c150f 100%);}
+.headBtn.past{justify-self:center;padding-inline:13px;font-size:12px;white-space:nowrap;}
+.headBtn.fullscreen{justify-self:center;padding-inline:12px;font-size:11px;white-space:nowrap;}
+.headBtn.fullscreen.on{border-color:#a97812;box-shadow:0 0 0 2px rgba(255,209,46,.32),0 5px 11px rgba(35,14,6,.42),inset 0 1px 0 rgba(255,255,255,.3);}
+.headBtn.fullscreen:disabled{opacity:.48;cursor:default;filter:saturate(.55);}
 .headBtn.start{justify-self:end;}
 .setupBody{padding:18px 20px 22px;}
 .nameRow{display:flex; align-items:center; gap:10px; margin:12px 0;}
@@ -1670,10 +1674,12 @@ function colorName(c){return c==='w'?'White':'Black';}
 function showSetup(){
   GAME.phase='setup';syncUI();
   const diffs=['casual','club','advanced','expert','grandmaster'].map(key=>[key,AI_TIERS[key]]);
-  const mts=[1,3,5,7,11,15];
+  const mts=[1,3,5,7,11,15],fsAvailable=fullscreenAvailable(),fsOn=isFullscreen();
   showOverlay(`
    <div class="woodHead">
      <button class="headBtn back" id="sBack">BACK</button>
+     <button class="headBtn past" id="sPastGames">PAST GAMES</button>
+     <button class="headBtn fullscreen${fsOn?' on':''}" id="sFullscreen" type="button" data-fullscreen-control aria-pressed="${fsOn}" aria-label="Fullscreen. ${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}" title="${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}"${fsAvailable?'':' disabled'}>${fsAvailable?(fsOn?'FULLSCREEN ON':'FULLSCREEN'):'FULLSCREEN N/A'}</button>
      <button class="headBtn start" id="sStart">START</button>
      <h1 class="title3d">BACKGAMMON</h1>
    </div>
@@ -1692,6 +1698,8 @@ function showSetup(){
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
    </div>`,'card setupCard');
   $('sBack').onclick=()=>{Snd.btn();hideOverlay();if(GAME.phase==='setup'&&GAME.state){GAME.phase='over';}else{GAME.phase='over';}};
+  $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
+  wireFullscreenControl($('sFullscreen'));
   $('sStart').onclick=()=>{
     Snd.opening();
     GAME.difficulty=PREF.diff;GAME.matchTo=PREF.matchTo;
@@ -1723,7 +1731,8 @@ function openArchivedGame(index){
   const archived=GAME.pastGames[index];if(!archived)return;
   GAME.reviewReturn={
     state:GAME.state?cloneState(GAME.state):null,record:GAME.record,lastResult:GAME.lastResult,
-    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,phase:GAME.phase
+    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,phase:GAME.phase,
+    returnTo:GAME.phase==='setup'?'setup':'menu'
   };
   GAME.record=JSON.parse(JSON.stringify(archived.record));
   GAME.lastResult=JSON.parse(JSON.stringify(archived.lastResult));
@@ -1735,9 +1744,10 @@ function pastGamesListHtml(){
   if(!GAME.pastGames.length)return'<div class="pastEmpty">No completed games this session</div>';
   return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(g.dateLabel)} · Open review</span></button>`).join('');
 }
-function showPastGames(){
+function showPastGames(returnTo){
+  const backToSetup=returnTo==='setup';
   showOverlay(`<h2>Past Games</h2><div class="pastGames">${pastGamesListHtml()}</div><button class="pbtn" id="pgBack">BACK</button>`,'modalCard menuList');
-  $('pgBack').onclick=()=>{Snd.btn();openMenu();};
+  $('pgBack').onclick=()=>{Snd.btn();backToSetup?showSetup():openMenu();};
   overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
 function openMenu(){
@@ -1749,7 +1759,7 @@ function openMenu(){
     <button class="pbtn" id="mNew">NEW MATCH</button>
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
-    <div class="toggleRow"><div><b>Fullscreen</b><div class="dim" id="fsStatus">${fsAvailable?'Fill the iPad display':'Not available in this browser'}</div></div><button class="switch${fsOn?' on':''}" id="mFullscreen" role="switch" aria-label="Fullscreen" aria-checked="${fsOn}"${fsAvailable?'':' disabled'}></button></div>
+    <div class="toggleRow"><div><b>Fullscreen</b><div class="dim" id="fsStatus">${fsAvailable?'Fill the iPad display':'Not available in this browser'}</div></div><button class="switch${fsOn?' on':''}" id="mFullscreen" data-fullscreen-control role="switch" aria-label="Fullscreen" aria-checked="${fsOn}"${fsAvailable?'':' disabled'}></button></div>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
@@ -1788,26 +1798,30 @@ function fullscreenAvailable(){
   return hasRequest&&policyAllows;
 }
 let fullscreenPending=false,fullscreenTouchHandled=false,fullscreenCheckTimer=0;
+function fullscreenControls(){return Array.from(document.querySelectorAll('[data-fullscreen-control]'));}
 function fullscreenFeedback(message){
   const status=$('fsStatus');
   if(status)status.textContent=message;
+  const setupControl=$('sFullscreen');
+  if(setupControl){setupControl.title=message;setupControl.setAttribute('aria-label','Fullscreen. '+message);}
 }
 function syncFullscreenToggle(){
   fullscreenPending=false;
   clearTimeout(fullscreenCheckTimer);
-  const control=$('mFullscreen');
-  if(!control)return;
   const on=isFullscreen();
-  control.classList.toggle('on',on);
-  control.setAttribute('aria-checked',String(on));
-  control.removeAttribute('aria-busy');
+  fullscreenControls().forEach(control=>{
+    control.classList.toggle('on',on);
+    if(control.getAttribute('role')==='switch')control.setAttribute('aria-checked',String(on));
+    else control.setAttribute('aria-pressed',String(on));
+    if(control.id==='sFullscreen')control.textContent=on?'FULLSCREEN ON':'FULLSCREEN';
+    control.removeAttribute('aria-busy');
+  });
   fullscreenFeedback(on?'Tap to return to the browser':'Fill the iPad display');
 }
 function fullscreenFailed(error){
   fullscreenPending=false;
   clearTimeout(fullscreenCheckTimer);
-  const control=$('mFullscreen');
-  if(control)control.removeAttribute('aria-busy');
+  fullscreenControls().forEach(control=>control.removeAttribute('aria-busy'));
   syncFullscreenToggle();
   fullscreenFeedback('Safari blocked fullscreen — tap again');
   toast('Fullscreen was blocked by Safari. Tap the switch again.',2600);
@@ -1820,8 +1834,7 @@ function toggleFS(){
   const root=fullscreenTarget();
   if(!root){fullscreenFailed();return;}
   fullscreenPending=true;
-  const control=$('mFullscreen');
-  if(control)control.setAttribute('aria-busy','true');
+  fullscreenControls().forEach(control=>control.setAttribute('aria-busy','true'));
   try{
     let result;
     if(!isFullscreen()){
@@ -2511,7 +2524,8 @@ function finishReview(){
     const back=GAME.reviewReturn;GAME.reviewReturn=null;
     GAME.state=back.state?cloneState(back.state):null;GAME.record=back.record;GAME.lastResult=back.lastResult;
     GAME.nameYou=back.nameYou;GAME.nameOpp='Computer';GAME.sideHuman=back.sideHuman;GAME.sideAI=back.sideAI;GAME.phase=back.phase;
-    refreshIdentity();hideOverlay();if(GAME.state){layout(GAME.state,false);updatePanel();syncUI();}openMenu();return;
+    refreshIdentity();hideOverlay();if(GAME.state){layout(GAME.state,false);updatePanel();syncUI();}
+    if(back.returnTo==='setup')showSetup();else openMenu();return;
   }
   GAME.state=cloneState(GAME.lastResult.state);
   layout(GAME.state,false);updatePanel();showResultDialog();
@@ -2846,7 +2860,8 @@ function onDocClick(ev){
 function openCloudGame(entry){
   GAME.reviewReturn={
     state:GAME.state?cloneState(GAME.state):null,record:GAME.record,lastResult:GAME.lastResult,
-    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,phase:GAME.phase
+    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,phase:GAME.phase,
+    returnTo:GAME.phase==='setup'?'setup':'menu'
   };
   GAME.record=JSON.parse(JSON.stringify(entry.record));
   GAME.lastResult=JSON.parse(JSON.stringify(entry.lastResult));
