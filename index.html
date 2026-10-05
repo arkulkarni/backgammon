@@ -1114,6 +1114,64 @@ function aiPick(state,dice,me,difficulty){
   const temp=calibratedTemperature(ranked.map(c=>c.error),tier.targetError);
   return sampleSoftmax(ranked,temp).seq;
 }
+/* ================= 2-ply lookahead for Hard ================= */
+// Hard looks one extra half-move ahead: for each of its top candidate moves it
+// simulates every distinct dice roll the player could throw next (21, with
+// exact probabilities), takes the player's best reply to each roll, and picks
+// the move with the best expected equity against those replies. The player's
+// replies are assumed greedy-best by the same neural net, which is exactly
+// the tactic the 1-ply engine was blind to (leaving blots it could not see
+// being hit). Runs on a time budget and falls back to the 1-ply best.
+const PLY2={
+  candidates:8,   // top-N 1-ply moves searched deeper
+  timeMs:2800,    // search budget; best-so-far is kept on expiry
+  maxReplies:12,  // replies per roll scored by the net (rest prefiltered below)
+};
+const PLY2_ROLLS=(()=>{
+  const r=[];
+  for(let a=1;a<=6;a++)for(let b=1;b<=a;b++)r.push({a,b,p:a===b?1/36:1/18});
+  return r;
+})();
+function ply2ReplyDice(roll){return roll.a===roll.b?[roll.a,roll.a,roll.a,roll.a]:[roll.a,roll.b];}
+function ply2PrefilterReplies(st,replies,player){
+  // Fast heuristic keeps only the plausible replies for net scoring, so the
+  // search stays inside its time budget in wide-open positions.
+  return replies.map(seq=>({seq,v:evaluate(applySeq(st,seq,player),player)}))
+    .sort((x,y)=>y.v-x.v).slice(0,PLY2.maxReplies).map(x=>x.seq);
+}
+async function aiPickHardTwoPly(state,dice,me){
+  if(!(window.GNUbgEvaluator&&GNUbgEvaluator.ready))throw new Error('GNU evaluator not ready');
+  const seqs=legalSequences(state,me,dice);
+  if(seqs.length<=1)return seqs[0]||[];
+  const ranked=seqs.map(seq=>{
+    const st=applySeq(state,seq,me);
+    return{seq,equity:positionEval(st,me).equity};
+  }).sort((a,b)=>b.equity-a.equity);
+  const player=other(me),deadline=performance.now()+PLY2.timeMs;
+  // NOTE: bestVal starts at -Infinity so the first candidate's 2-ply value
+  // seeds the comparison; 2-ply values and 1-ply equities share a scale but
+  // are not interchangeable baselines (replies only ever reduce equity).
+  let bestSeq=ranked[0].seq,bestVal=-Infinity;
+  const limit=Math.min(PLY2.candidates,ranked.length);
+  for(let i=0;i<limit;i++){
+    const st=applySeq(state,ranked[i].seq,me);
+    let val=0;
+    for(const roll of PLY2_ROLLS){
+      let replies=legalSequences(st,player,ply2ReplyDice(roll));
+      if(replies.length>PLY2.maxReplies)replies=ply2PrefilterReplies(st,replies,player);
+      let worst=Infinity; // the player's best reply is our worst outcome
+      for(const rq of replies){
+        const v=positionEval(applySeq(st,rq,player),me).equity;
+        if(v<worst)worst=v;
+      }
+      val+=roll.p*worst;
+    }
+    if(val>bestVal){bestVal=val;bestSeq=ranked[i].seq;}
+    if(performance.now()>=deadline)break;
+    await new Promise(r=>setTimeout(r,0)); // keep the page responsive while thinking
+  }
+  return bestSeq;
+}
 /* ================= renderer ================= */
 const svg=document.getElementById('board');
 function S(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/svg',tag);if(attrs)for(const k in attrs)e.setAttribute(k,attrs[k]);return e;}
@@ -2121,7 +2179,19 @@ async function aiTurn(openingDice){
   const tier=AI_TIERS[GAME.difficulty]||AI_TIERS.medium;
   await ensureGNUReady(tier.label+' computer');
   if(tok!==GAME.token)return;
-  const seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);
+  let seq;
+  if(GAME.difficulty==='hard'){
+    // 2-ply lookahead: the computer considers the player's likely replies.
+    // Shows a thinking note while it searches, and falls back to the 1-ply
+    // pick if anything goes wrong so the game never stalls.
+    const tEl=$('toast');clearTimeout(toast._h);
+    tEl.textContent='Hard is thinking…';tEl.classList.add('show');
+    try{seq=await aiPickHardTwoPly(GAME.state,dice,GAME.sideAI);}
+    catch(e){seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);}
+    clearTimeout(toast._h);tEl.classList.remove('show');
+  }else{
+    seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);
+  }
   if(tok!==GAME.token)return;
   if(!seq.length){
     recordTurn(GAME.sideAI,dice,[],aiBefore,GAME.state);
@@ -2684,6 +2754,7 @@ function renderResultDialog(){
   const r=GAME.lastResult;if(!r)return;GAME.phase='over';
   const you=humanAnalysisSummary(),opp=analysisSummary(GAME.sideAI),moments=keyMoments();
   const youName=escHtml(GAME.nameYou),oppName=escHtml(GAME.nameOpp);
+  const youAccLabel=GAME.nameYou==='You'?'Your accuracy':youName+'’s accuracy';
   const playerWon=r.winner===GAME.sideHuman;
   const secondPerson=playerWon&&String(r.name).trim().toLowerCase()==='you';
   const resultText=secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`;
@@ -2691,7 +2762,7 @@ function renderResultDialog(){
   const accuracy=s=>s.accuracy==null?'—':s.accuracy;
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
   const nextActions=`<div class="outcomeFooter"><button class="pbtn" id="oRematch">REMATCH</button><button class="pbtn" id="oSetup">MENU</button></div>`;
-  showOverlay(`<h2>Outcome</h2><div class="resultBanner">${celebration}<div class="resultTitle">${resultText}</div><div class="resultScore">${r.points} point${r.points===1?'':'s'} · ${escHtml(r.info.label)}</div></div><div class="accuracyGrid"><div class="accuracyPlayer"><span>${youName} accuracy</span><b>${accuracy(you)}${you.accuracy==null?'':'%'}</b><small>${you.total.toFixed(3)} total error</small></div><div class="accuracyPlayer"><span>${oppName} accuracy</span><b>${accuracy(opp)}${opp.accuracy==null?'':'%'}</b><small>${opp.total.toFixed(3)} total error</small></div></div><div class="accuracyNote">Accuracy is based on average equity lost per turn.</div><div class="qualityGrid"><div class="qualityHead">MOVE QUALITY</div><div class="qualityHead">${youName}</div><div class="qualityHead">${oppName}</div>${qualityRow('Brilliant',you.brilliant,opp.brilliant)}${qualityRow('Mistakes',you.mistakes,opp.mistakes)}${qualityRow('Blunders',you.blunders,opp.blunders)}</div><div class="reviewMeta">${moments.length} key moment${moments.length===1?'':'s'} flagged</div><button class="pbtn reviewPrimary" id="oReview">GAME REVIEW</button>${nextActions}`,'modalCard outcomeCard');
+  showOverlay(`<h2>Outcome</h2><div class="resultBanner">${celebration}<div class="resultTitle">${resultText}</div><div class="resultScore">${r.points} point${r.points===1?'':'s'} · ${escHtml(r.info.label)}</div></div><div class="accuracyGrid"><div class="accuracyPlayer"><span>${youAccLabel}</span><b>${accuracy(you)}${you.accuracy==null?'':'%'}</b><small>${you.total.toFixed(3)} total error</small></div><div class="accuracyPlayer"><span>${oppName} accuracy</span><b>${accuracy(opp)}${opp.accuracy==null?'':'%'}</b><small>${opp.total.toFixed(3)} total error</small></div></div><div class="accuracyNote">Accuracy is based on average equity lost per turn.</div><div class="qualityGrid"><div class="qualityHead">MOVE QUALITY</div><div class="qualityHead">${youName}</div><div class="qualityHead">${oppName}</div>${qualityRow('Brilliant',you.brilliant,opp.brilliant)}${qualityRow('Mistakes',you.mistakes,opp.mistakes)}${qualityRow('Blunders',you.blunders,opp.blunders)}</div><div class="reviewMeta">${moments.length} key moment${moments.length===1?'':'s'} flagged</div><button class="pbtn reviewPrimary" id="oReview">GAME REVIEW</button>${nextActions}`,'modalCard outcomeCard');
   $('oReview').onclick=()=>{Snd.btn();const first=keyMoments()[0];showReplay(first?first.recordIndex+1:0);};
   $('oRematch').onclick=()=>{Snd.btn();hideOverlay();newGame();};
   $('oSetup').onclick=()=>{Snd.btn();hideOverlay();showSetup();};
