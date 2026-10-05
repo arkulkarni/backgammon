@@ -476,7 +476,7 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   .reviewCounter{margin-bottom:4px;}
 }
 </style>
-<link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="apple-mobile-web-app-title" content="Backgammon"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head>
+</head>
 <body>
 <div id="app">
   <div id="playArea">
@@ -2475,38 +2475,46 @@ function celebrateVictory(){
   const box=$('confetti');
   if(!box||window.matchMedia('(prefers-reduced-motion: reduce)').matches)return 0;
   clearTimeout(celebrateVictory._h);
+  clearInterval(celebrateVictory._iv);
   box.innerHTML='';box.hidden=false;
   const colors=['#ffd12e','#f6d36a','#ef5b45','#ff9071','#f6f2e9','#38a47b','#50b7c8','#587dd4','#b565cf'];
-  const count=78;
-  for(let i=0;i<count;i++){
-    const piece=document.createElement('i'),shape=i%7===0?'streamer':i%4===0?'diamond':'';
+  const FALL_MIN=2.4,FALL_MAX=3.4; // seconds for one piece to fall
+  function spawnPiece(midAir){
+    const piece=document.createElement('i'),r=Math.random();
+    const shape=r<0.14?'streamer':r<0.40?'diamond':'';
     piece.className='confettiPiece'+(shape?' '+shape:'');
-    const direction=i%2?-1:1;
+    const direction=Math.random()<0.5?-1:1;
     const swayA=direction*(12+Math.random()*48);
     const swayB=-direction*(8+Math.random()*42);
     const swayC=direction*(15+Math.random()*64);
     const spin=(420+Math.random()*980)*direction;
+    const dur=FALL_MIN+Math.random()*(FALL_MAX-FALL_MIN);
     piece.style.setProperty('--left',(Math.random()*100).toFixed(2)+'%');
     piece.style.setProperty('--w',(shape==='streamer'?15+Math.random()*15:5+Math.random()*8)+'px');
     piece.style.setProperty('--h',(shape==='streamer'?3:shape==='diamond'?7+Math.random()*7:9+Math.random()*15)+'px');
-    piece.style.setProperty('--radius',i%5===0?'50%':i%4===0?'1px':'2px');
-    piece.style.setProperty('--c',colors[i%colors.length]);
+    piece.style.setProperty('--radius',Math.random()<0.2?'50%':shape==='diamond'?'1px':'2px');
+    piece.style.setProperty('--c',colors[(Math.random()*colors.length)|0]);
     piece.style.setProperty('--sway-a',swayA.toFixed(1)+'px');
     piece.style.setProperty('--sway-b',swayB.toFixed(1)+'px');
     piece.style.setProperty('--sway-c',swayC.toFixed(1)+'px');
     piece.style.setProperty('--spin-a',(spin*.30).toFixed(0)+'deg');
     piece.style.setProperty('--spin-b',(spin*.66).toFixed(0)+'deg');
     piece.style.setProperty('--spin-c',spin.toFixed(0)+'deg');
-    // 1.5x the original 2.5–3.2 second gentle fall (0.75x the previous double),
-    // with a staggered start rather than a center burst.
-    const duration=(2.5+Math.random()*.7)*1.5;
-    piece.style.setProperty('--dur',duration+'s');
-    piece.style.setProperty('--delay',(Math.random()*.86)+'s');
+    piece.style.setProperty('--dur',dur.toFixed(2)+'s');
+    // A negative delay starts the piece partway through its fall, so the
+    // screen is full of confetti from the very first frame.
+    piece.style.setProperty('--delay',(midAir?-(Math.random()*dur):0).toFixed(2)+'s');
     box.appendChild(piece);
+    setTimeout(()=>{piece.remove();},(dur+0.4)*1000);
   }
-  const durationMs=5850;
-  celebrateVictory._h=setTimeout(()=>{box.hidden=true;box.innerHTML='';},durationMs);
-  return durationMs;
+  // Instant full-screen coverage: seed pieces already mid-fall.
+  for(let i=0;i<70;i++)spawnPiece(true);
+  // Then keep the rain falling continuously for the whole celebration.
+  const SPAN_MS=5850;
+  celebrateVictory._iv=setInterval(()=>spawnPiece(false),90);
+  setTimeout(()=>clearInterval(celebrateVictory._iv),SPAN_MS);
+  celebrateVictory._h=setTimeout(()=>{box.hidden=true;box.innerHTML='';},SPAN_MS);
+  return SPAN_MS;
 }
 function analysisSummary(side){
   const rows=GAME.record.filter(r=>r.side===side&&r.analysis);
@@ -2788,8 +2796,7 @@ function init(){
 init();
 window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
 </script>
-<script>
-/* BackgammonCloud: Firebase past-game sync (injected at deploy time) */
+<script>/* firebase-sync.js inlined at deploy */
 /* Backgammon <-> Firebase Firestore sync, with required email/password sign-in.
  *
  * WHAT: Email/password sign-in is REQUIRED to use the app. On first launch the
@@ -3125,9 +3132,39 @@ function injectUserBar(){
 /* ---------------- Firestore save / load ---------------- */
 function num(n){return typeof n==='number'&&isFinite(n)?n:null;}
 
+/* Firestore rejects nested arrays, and board states store points as an array
+ * of 24 arrays. Pack states as JSON strings on save and unpack on load. */
+function packState(s){try{return JSON.stringify(s);}catch(e){return null;}}
+function packRecord(rec){
+  if(!Array.isArray(rec))return [];
+  return rec.map(function(t){
+    return {side:t.side,dice:t.dice,moves:t.moves,analysis:t.analysis,
+      before:packState(t.before),after:packState(t.after)};
+  });
+}
+function packLastResult(lr){
+  var c={};for(var k in lr){if(Object.prototype.hasOwnProperty.call(lr,k))c[k]=lr[k];}
+  c.state=packState(lr.state);
+  return c;
+}
+function unpackState(s){if(typeof s!=='string')return s;try{return JSON.parse(s);}catch(e){return null;}}
+function unpackRecord(rec){
+  if(!Array.isArray(rec))return rec;
+  return rec.map(function(t){
+    var c={};for(var k in t){if(Object.prototype.hasOwnProperty.call(t,k))c[k]=t[k];}
+    c.before=unpackState(t.before);c.after=unpackState(t.after);
+    return c;
+  });
+}
+function unpackLastResult(lr){
+  if(!lr||typeof lr!=='object')return lr;
+  var c={};for(var k in lr){if(Object.prototype.hasOwnProperty.call(lr,k))c[k]=lr[k];}
+  c.state=unpackState(lr.state);
+  return c;
+}
+
 function buildDoc(entry){
-  var lr=entry.lastResult||{};
-  var tierKey=null,tierLabel=null,tierElo=null;
+  var lr=entry.lastResult||{};  var tierKey=null,tierLabel=null,tierElo=null;
   try{
     tierKey=GAME.difficulty||null;
     var tier=(typeof AI_TIERS!=='undefined')&&tierKey?AI_TIERS[tierKey]:null;
@@ -3152,8 +3189,8 @@ function buildDoc(entry){
     nameYou:entry.nameYou,nameOpp:entry.nameOpp,
     sideHuman:entry.sideHuman,sideAI:entry.sideAI,
     accuracy:acc,
-    record:entry.record,
-    lastResult:lr,
+    record:packRecord(entry.record),
+    lastResult:packLastResult(lr),
     dateLabel:entry.dateLabel
   };
 }
@@ -3209,7 +3246,7 @@ function readGameDocs(uid){
 function docToView(docId,d){
   return {
     cloudId:docId,syncId:d.syncId||null,
-    record:d.record,lastResult:d.lastResult,
+    record:unpackRecord(d.record),lastResult:unpackLastResult(d.lastResult),
     nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
     sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
     resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
