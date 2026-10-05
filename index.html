@@ -246,16 +246,18 @@ body.reviewing #reviewTimelineDock{
 }
 .headBtn{position:static; padding:10px 22px; font-size:14px;}
 .headBtn.past{justify-self:start;padding-inline:13px;font-size:12px;white-space:nowrap;}
-.headBtn.fullscreen{justify-self:center;padding-inline:12px;font-size:11px;white-space:nowrap;}
-.headBtn.fullscreen.on{border-color:#a97812;box-shadow:0 0 0 2px rgba(255,209,46,.32),0 5px 11px rgba(35,14,6,.42),inset 0 1px 0 rgba(255,255,255,.3);}
-.headBtn.fullscreen:disabled{opacity:.48;cursor:default;filter:saturate(.55);}
-.headBtn.start{justify-self:end;}
+.headBtn.start{justify-self:end;grid-column:3;}
 .setupBody{padding:18px 20px 22px;}
 .nameRow{display:flex; align-items:center; gap:10px; margin:12px 0;}
 .colorBtn{width:52px; height:52px; border-radius:50%; border:3px solid #7a5a34; cursor:pointer; flex:none;
   box-shadow:0 3px 8px rgba(0,0,0,.3), inset 0 2px 3px rgba(255,255,255,.3);}
 .colorBtn.black{background:radial-gradient(circle at 39% 34%, #454a54, #242831 78%);}
 .colorBtn.white{background:radial-gradient(circle at 39% 34%, #f6f2e9, #d5ccbd 80%);}
+.colorChoice{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;}
+.colorChoice::before{content:"";width:26px;height:26px;border-radius:50%;border:2px solid #8b704a;box-shadow:inset 0 1px 2px rgba(255,255,255,.35),0 2px 4px rgba(70,40,15,.2);}
+.colorChoice[data-color="white"]::before{background:radial-gradient(circle at 39% 34%,#f6f2e9,#d5ccbd 80%);}
+.colorChoice[data-color="black"]::before{background:radial-gradient(circle at 39% 34%,#454a54,#242831 78%);}
+.colorChoice.sel::before{border-color:#fff3c4;box-shadow:0 0 0 2px rgba(255,209,46,.5),inset 0 1px 2px rgba(255,255,255,.35);}
 .fieldWrap{flex:1;}
 .fieldWrap label{display:block; font-size:11px; font-weight:800; letter-spacing:.12em; color:#8a6a3c; margin-bottom:3px;}
 .fieldWrap input{
@@ -268,6 +270,8 @@ body.reviewing #reviewTimelineDock{
 .setRow{margin:18px 0 6px;}
 .setRow .setLabel{font-size:13px; font-weight:800; letter-spacing:.14em; color:#8a6a3c; margin-bottom:8px;}
 .pillRow{display:flex; gap:8px; flex-wrap:wrap;}
+.pillRow.difficultyRow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));}
+.pillRow.difficultyRow .pill{width:100%;min-width:0;}
 .pill{flex:1 1 auto; appearance:none; border:1px solid #ad8a4c; background:linear-gradient(180deg,#fffef9,#f4ead7); color:#755528; border-radius:9px; padding:10px 6px;
   box-shadow:0 2px 4px rgba(80,47,11,.16),inset 0 1px 0 #fff;
   text-shadow:0 1px 0 #fff; font-family:inherit; font-size:14px; font-weight:850; letter-spacing:.025em; cursor:pointer; text-align:center;
@@ -340,10 +344,15 @@ svg text{pointer-events:none;}
   #stage{padding:6px;}
   #side{height:calc(100dvh - 16px); margin-right:8px;}
 }
-/* tablet-height landscape (e.g. iPad mini): slim the rail so the board grows */
+/* tablet-height landscape (e.g. iPad mini): keep the rail compact so the
+   taller 4:3 board reaches the same top and bottom edges as the controls. */
 @media (orientation: landscape) and (max-height:820px){
-  #side{flex-basis:158px;}
-  .offBadge{width:56px; height:56px; font-size:23px;}
+  #stage{padding:4px;}
+  #side{flex-basis:134px;height:calc(100dvh - 8px);margin-right:4px;padding:10px 8px;gap:6px;border-radius:12px;}
+  .offBadge{width:52px; height:52px; font-size:21px;margin-bottom:5px;}
+  #side .pname{font-size:15px;margin-bottom:3px;}
+  #side .pline{font-size:13px;line-height:1.4;}
+  #side .pbtn{min-height:44px;margin:6px 0;padding:9px 0;}
 }
 /* short landscape (phones / split view): compact rail, controls stay tappable */
 @media (orientation: landscape) and (max-height:520px){
@@ -440,7 +449,7 @@ svg text{pointer-events:none;}
   <div id="playArea">
   <main id="stage">
     <div id="confetti" aria-hidden="true" hidden></div>
-    <svg id="board" viewBox="0 0 1200 700" preserveAspectRatio="xMidYMid meet" aria-label="Backgammon board">
+    <svg id="board" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid meet" aria-label="Backgammon board">
       <defs>
         <radialGradient id="gFelt" cx="48%" cy="42%" r="88%">
           <stop class="stFelt1" offset="0%" stop-color="#d8b77b"/>
@@ -497,8 +506,7 @@ svg text{pointer-events:none;}
     <section class="pblk" id="blkHuman">
       <button class="offBadge black" id="badgeYou" type="button" aria-label="0 checkers taken off" disabled><span id="offYou">0</span></button>
       <div class="pinfo">
-        <div class="pname" id="nameYou">AK</div>
-        <div class="pline">Score: <span id="scoreYou">0</span></div>
+        <div class="pname" id="nameYou">You</div>
         <div class="pline">Pips: <span id="pipsYou">167</span></div>
       </div>
     </section>
@@ -510,7 +518,6 @@ svg text{pointer-events:none;}
       <div class="offBadge white" id="badgeOpp"><span id="offOpp">0</span></div>
       <div class="pinfo">
         <div class="pname" id="nameOpp">Computer</div>
-        <div class="pline">Score: <span id="scoreOpp">0</span></div>
         <div class="pline">Pips: <span id="pipsOpp">167</span></div>
       </div>
     </section>
@@ -1082,8 +1089,9 @@ function S(tag,attrs){const e=document.createElementNS('http://www.w3.org/2000/s
 const gBase=document.getElementById('gBase'),gTri=document.getElementById('gTri'),
       gHL=document.getElementById('gHL'),gCK=document.getElementById('gCK'),
       gBadge=document.getElementById('gBadge'),gDice=document.getElementById('gDice');
-const GV={F:30,X0:30,X1:1170,Y0:30,Y1:670,BARX:600,BARW:52,BARSCALE:1,BARPITCH:34,BARVISIBLE:8,PW:92,R:40,PITCH:34};
+const GV={F:30,X0:30,X1:1170,Y0:30,Y1:870,MID:450,BARX:600,BARW:52,BARSCALE:1,BARPITCH:34,BARVISIBLE:8,PW:92,R:40,PITCH:34};
 const ROLL_ANCHOR={width:168,height:60};
+function refreshBoardFit(){pinRollButton();}
 function pinRollButton(){
   // Keep ROLL as ordinary HTML so its typography uses the same CSS pixels and
   // responsive .pbtn rules as UNDO. Map the board-space target through the
@@ -1115,7 +1123,7 @@ const MOTION={human:1200,computer:1600,barHuman:1200,barComputer:1600,gap:240,se
 function slotX(s){return s<6?76+92*s:664+92*(s-6);}
 function idxSlot(idx){return idx<12?{slot:11-idx,row:'b'}:{slot:idx-12,row:'t'};}
 function ptX(idx){return slotX(idxSlot(idx).slot);}
-function stackY(idx,depth){return idxSlot(idx).row==='b'?630-GV.PITCH*depth:70+GV.PITCH*depth;}
+function stackY(idx,depth){return idxSlot(idx).row==='b'?GV.Y1-40-GV.PITCH*depth:GV.Y0+40+GV.PITCH*depth;}
 function triPts(slot,row){
   const x=slotX(slot),barL=GV.BARX-GV.BARW/2,barR=GV.BARX+GV.BARW/2;
   let left=x-46,right=x+46;
@@ -1123,9 +1131,9 @@ function triPts(slot,row){
   // continuing underneath it.
   if(slot===5)right=barL;
   if(slot===6)left=barR;
-  return row==='t'?`${left},30 ${right},30 ${x},330`:`${left},670 ${right},670 ${x},370`;
+  return row==='t'?`${left},${GV.Y0} ${right},${GV.Y0} ${x},${GV.MID-40}`:`${left},${GV.Y1} ${right},${GV.Y1} ${x},${GV.MID+40}`;
 }
-function barY(c,depth){return c==='w'?374+GV.BARPITCH*depth:326-GV.BARPITCH*depth;}
+function barY(c,depth){return c==='w'?GV.MID+24+GV.BARPITCH*depth:GV.MID-24-GV.BARPITCH*depth;}
 function setBarPos(el,c,depth){el.style.transform=`translate(${GV.BARX}px,${barY(c,depth)}px) scale(${GV.BARSCALE})`;}
 const CK={}; const CKCLIP={}; let CKLOC={}; const BADGE={};
 const FLY_OFF_IDS=new Set();
@@ -1135,15 +1143,15 @@ function buildBoard(){
     const marker=S('marker',{id:spec[0],viewBox:'0 0 12 12',refX:10,refY:6,markerWidth:9,markerHeight:9,orient:'auto-start-reverse'});
     marker.appendChild(S('path',{d:'M 1 1 L 11 6 L 1 11 Z',fill:spec[1]}));defs.appendChild(marker);
   });
-  gBase.appendChild(S('rect',{x:0,y:0,width:1200,height:700,rx:18,fill:'url(#gWood)'}));
-  gBase.appendChild(S('rect',{x:23,y:23,width:1154,height:654,rx:10,fill:'none',stroke:'#3a1c08','stroke-width':5}));
-  gBase.appendChild(S('rect',{x:30,y:30,width:1140,height:640,rx:6,fill:'url(#gFelt)'}));
-  const wm=S('text',{x:302,y:365,'text-anchor':'middle',class:'wm','font-size':38});
+  gBase.appendChild(S('rect',{x:0,y:0,width:1200,height:900,rx:18,fill:'url(#gWood)'}));
+  gBase.appendChild(S('rect',{x:23,y:23,width:1154,height:854,rx:10,fill:'none',stroke:'#3a1c08','stroke-width':5}));
+  gBase.appendChild(S('rect',{x:30,y:30,width:1140,height:840,rx:6,fill:'url(#gFelt)'}));
+  const wm=S('text',{x:302,y:GV.MID+15,'text-anchor':'middle',class:'wm','font-size':38});
   wm.textContent='BACKGAMMON';gBase.appendChild(wm);
-  const bar=S('rect',{x:GV.BARX-GV.BARW/2,y:30,width:GV.BARW,height:640,fill:'url(#gBar)','stroke-width':2,stroke:'#2c1505'});
+  const bar=S('rect',{x:GV.BARX-GV.BARW/2,y:GV.Y0,width:GV.BARW,height:GV.Y1-GV.Y0,fill:'url(#gBar)','stroke-width':2,stroke:'#2c1505'});
   bar.setAttribute('data-bar','1');
   gBase.appendChild(bar);
-  [[16,16],[1184,16],[16,684],[1184,684]].forEach(p=>{
+  [[16,16],[1184,16],[16,884],[1184,884]].forEach(p=>{
     gBase.appendChild(S('circle',{cx:p[0],cy:p[1],r:7,fill:'#2c1505',stroke:'#4a2c12','stroke-width':1.5}));
   });
   // triangles (with input hooks)
@@ -1155,7 +1163,7 @@ function buildBoard(){
     poly.setAttribute('data-pt',p.idx);
     gTri.appendChild(poly);
   }
-  const felt=S('rect',{x:30,y:30,width:1140,height:640,rx:6,fill:'none',stroke:'#6e451f','stroke-width':2});
+  const felt=S('rect',{x:GV.X0,y:GV.Y0,width:GV.X1-GV.X0,height:GV.Y1-GV.Y0,rx:6,fill:'none',stroke:'#6e451f','stroke-width':2});
   gBase.appendChild(felt);
 }
 function buildCheckers(){
@@ -1197,7 +1205,7 @@ function layout(st,animate,keepVisible){
       if(k<n){const el=CK[id];visible.add(id);el.style.display='';setPos(el,x,stackY(i,k));}
       loc[id]={kind:'point',idx:i,k};
     });
-    badge('p'+i, x+30, row==='b'?396:304, ids.length>8?String(ids.length):null);
+    badge('p'+i, x+30, row==='b'?GV.MID+46:GV.MID-46, ids.length>8?String(ids.length):null);
   }
   for(const c of ['w','b']){
     const bar=st.bar[c];
@@ -1368,9 +1376,9 @@ const PIPS={1:[[0,0]],2:[[-14,-14],[14,14]],3:[[-14,-14],[0,0],[14,14]],
   6:[[-14,-14],[14,-14],[-14,0],[14,0],[-14,14],[14,14]]};
 let diceEls=[];
 function dieRestPositions(n){
-  if(n===1)return[[940,350]];
-  if(n===2)return[[898,350],[982,350]];
-  return[[773,350],[857,350],[941,350],[1025,350]];
+  if(n===1)return[[940,GV.MID]];
+  if(n===2)return[[898,GV.MID],[982,GV.MID]];
+  return[[773,GV.MID],[857,GV.MID],[941,GV.MID],[1025,GV.MID]];
 }
 function diePips(inner,val){
   inner.innerHTML='';
@@ -1595,14 +1603,14 @@ function renderReviewMove(row,showAlternative){
 /* ================= controller ================= */
 const GAME={
   phase:'setup',token:0,
-  difficulty:'expert',matchTo:1,
+  difficulty:'expert',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
-  state:null,scores:{},remaining:[],diceVals:[],seqs:[],snaps:[],history:[],turnHistoryStart:0,
+  state:null,remaining:[],diceVals:[],seqs:[],snaps:[],history:[],turnHistoryStart:0,
   selected:null,destsNow:[],sourcesNow:[],record:[],turnStart:null,turnMoves:[],turnRecorded:false,lastResult:null,replayIndex:0,
   pastGames:[],reviewReturn:null,
 };
-const PREF={diff:'expert',matchTo:1,nameYou:'You',humanBlack:true,tutor:false};
+const PREF={diff:'expert',humanBlack:true,tutor:false};
 const overlay=$('overlay'),overlayCard=$('overlayCard'),btnRoll=$('btnRoll');
 function bumpToken(){GAME.token++;}
 function toast(msg,ms){
@@ -1673,36 +1681,31 @@ function colorName(c){return c==='w'?'White':'Black';}
 function showSetup(){
   GAME.phase='setup';syncUI();
   const diffs=['casual','club','advanced','expert','grandmaster'].map(key=>[key,AI_TIERS[key]]);
-  const mts=[1,3,5,7,11,15],fsAvailable=fullscreenAvailable(),fsOn=isFullscreen();
   showOverlay(`
    <div class="woodHead">
      <button class="headBtn past" id="sPastGames">PAST GAMES</button>
-     <button class="headBtn fullscreen${fsOn?' on':''}" id="sFullscreen" type="button" data-fullscreen-control aria-pressed="${fsOn}" aria-label="Fullscreen. ${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}" title="${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}"${fsAvailable?'':' disabled'}>${fsAvailable?(fsOn?'FULLSCREEN ON':'FULLSCREEN'):'FULLSCREEN N/A'}</button>
      <button class="headBtn start" id="sStart">START</button>
      <h1 class="title3d">BACKGAMMON</h1>
    </div>
    <div class="setupBody">
-     <div class="nameRow">
-       <button class="colorBtn ${PREF.humanBlack?'black':'white'}" id="cYou" title="Your checker color"></button>
-       <div class="fieldWrap"><label>NAME</label><input id="fYou" maxlength="14" value="${escAttr(PREF.nameYou)}"></div>
-       <button class="swapBtn" id="swapColors" title="Swap colors">&#8645;</button>
+     <div class="setRow"><div class="setLabel">CHECKER COLOR</div>
+       <div class="pillRow">
+         <button class="pill colorChoice${PREF.humanBlack?'':' sel'}" type="button" data-color="white">White</button>
+         <button class="pill colorChoice${PREF.humanBlack?' sel':''}" type="button" data-color="black">Black</button>
+       </div>
      </div>
      <div class="setRow"><div class="setLabel">DIFFICULTY</div>
-       <div class="pillRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}, approximately ${tier.elo} Elo"><span class="tierName">${tier.label}</span><small class="tierElo">~${tier.elo}</small></button>`).join('')}</div>
-     </div>
-     <div class="setRow"><div class="setLabel">MATCH TO</div>
-       <div class="pillRow">${mts.map(m=>`<button class="pill${m===PREF.matchTo?' sel':''}" data-mt="${m}">${m}</button>`).join('')}</div>
+       <div class="pillRow difficultyRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}, approximately ${tier.elo} Elo"><span class="tierName">${tier.label}</span><small class="tierElo">~${tier.elo}</small></button>`).join('')}</div>
      </div>
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
    </div>`,'card setupCard');
   $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
-  wireFullscreenControl($('sFullscreen'));
   $('sStart').onclick=()=>{
     Snd.opening();
-    GAME.difficulty=PREF.diff;GAME.matchTo=PREF.matchTo;
-    GAME.nameYou=cleanName($('fYou').value)||'You';
+    GAME.difficulty=PREF.diff;
+    GAME.nameYou='You';
     GAME.nameOpp='Computer';
-    PREF.nameYou=GAME.nameYou;
+    PREF.nameYou='You';
     GAME.sideHuman=PREF.humanBlack?'b':'w';
     GAME.sideAI=other(GAME.sideHuman);
     hideOverlay();startMatch();
@@ -1711,14 +1714,10 @@ function showSetup(){
     Snd.pick();PREF.diff=el.getAttribute('data-diff');
     overlayCard.querySelectorAll('[data-diff]').forEach(x=>x.classList.toggle('sel',x===el));
   });
-  overlayCard.querySelectorAll('[data-mt]').forEach(el=>el.onclick=()=>{
-    Snd.pick();PREF.matchTo=+el.getAttribute('data-mt');
-    overlayCard.querySelectorAll('[data-mt]').forEach(x=>x.classList.toggle('sel',x===el));
+  overlayCard.querySelectorAll('[data-color]').forEach(el=>el.onclick=()=>{
+    Snd.pick();PREF.humanBlack=el.getAttribute('data-color')==='black';
+    overlayCard.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('sel',x===el));
   });
-  $('fYou').oninput=()=>{PREF.nameYou=$('fYou').value;};
-  const flip=()=>{PREF.humanBlack=!PREF.humanBlack;Snd.pick();
-    $('cYou').className='colorBtn '+(PREF.humanBlack?'black':'white');};
-  $('swapColors').onclick=flip;$('cYou').onclick=flip;
 }
 function escAttr(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 function cleanName(s){return String(s||'').trim().slice(0,14);}
@@ -1733,7 +1732,7 @@ function openArchivedGame(index){
   };
   GAME.record=JSON.parse(JSON.stringify(archived.record));
   GAME.lastResult=JSON.parse(JSON.stringify(archived.lastResult));
-  GAME.nameYou=archived.nameYou;GAME.nameOpp='Computer';
+  GAME.nameYou='You';GAME.nameOpp='Computer';
   GAME.sideHuman=archived.sideHuman;GAME.sideAI=archived.sideAI;
   refreshIdentity();hideOverlay();showReplay(0);
 }
@@ -1750,13 +1749,11 @@ function showPastGames(returnTo){
 function openMenu(){
   const engine=window.GNUbgEvaluator,engineReady=!!(engine&&engine.ready);
   const engineState=!engine?'Game Review is unavailable':engineReady?'':engine.status==='waiting'?'Game Review download interrupted · retrying automatically':engine.status==='retrying'?'Game Review is retrying its download…':'Game Review is downloading…';
-  const fsAvailable=fullscreenAvailable(),fsOn=isFullscreen();
   showOverlay(`<h2>Menu</h2>
     <button class="pbtn" id="mResume">RESUME</button>
-    <button class="pbtn" id="mNew">NEW MATCH</button>
+    <button class="pbtn" id="mNew">NEW GAME</button>
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
-    <div class="toggleRow"><div><b>Fullscreen</b><div class="dim" id="fsStatus">${fsAvailable?'Fill the iPad display':'Not available in this browser'}</div></div><button class="switch${fsOn?' on':''}" id="mFullscreen" data-fullscreen-control role="switch" aria-label="Fullscreen" aria-checked="${fsOn}"${fsAvailable?'':' disabled'}></button></div>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
@@ -1764,7 +1761,6 @@ function openMenu(){
   $('mNew').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
-  wireFullscreenControl($('mFullscreen'));
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
 }
 function showRules(){
@@ -1814,6 +1810,7 @@ function syncFullscreenToggle(){
     control.removeAttribute('aria-busy');
   });
   fullscreenFeedback(on?'Tap to return to the browser':'Fill the iPad display');
+  requestAnimationFrame(refreshBoardFit);
 }
 function fullscreenFailed(error){
   fullscreenPending=false;
@@ -1881,8 +1878,6 @@ document.addEventListener('webkitfullscreenerror',fullscreenFailed);
 /* ---------- hud ---------- */
 function updatePanel(){
   const st=GAME.state;
-  const sy=GAME.scores[GAME.sideHuman]||0,so=GAME.scores[GAME.sideAI]||0;
-  $('scoreYou').textContent=sy;$('scoreOpp').textContent=so;
   $('pipsYou').textContent=st?pipCount(st,GAME.sideHuman):167;
   $('pipsOpp').textContent=st?pipCount(st,GAME.sideAI):167;
   const offYou=st?st.off[GAME.sideHuman]:0;
@@ -1938,7 +1933,6 @@ function syncUI(){
 /* ---------- match / game flow ---------- */
 function startMatch(){
   bumpToken();
-  GAME.scores={};GAME.scores[GAME.sideHuman]=0;GAME.scores[GAME.sideAI]=0;
   refreshIdentity();
   newGame();
 }
@@ -2338,7 +2332,7 @@ function idxFromScreen(e){
   if(p.x<600){s=Math.round((p.x-76)/92);if(s<0||s>5)s=null;}
   else{s=Math.round((p.x-664)/92);if(s<0||s>5)s=null;else s=6+s;}
   if(s===null)return null;
-  return p.y<350?(s<6?12+s:18+(s-6)):(11-s);
+  return p.y<GV.MID?(s<6?12+s:18+(s-6)):(11-s);
 }
 function activateBoardTarget(t){
   if(GAME.phase!=='moving'||!t)return;
@@ -2520,7 +2514,7 @@ function finishReview(){
   if(GAME.reviewReturn){
     const back=GAME.reviewReturn;GAME.reviewReturn=null;
     GAME.state=back.state?cloneState(back.state):null;GAME.record=back.record;GAME.lastResult=back.lastResult;
-    GAME.nameYou=back.nameYou;GAME.nameOpp='Computer';GAME.sideHuman=back.sideHuman;GAME.sideAI=back.sideAI;GAME.phase=back.phase;
+    GAME.nameYou='You';GAME.nameOpp='Computer';GAME.sideHuman=back.sideHuman;GAME.sideAI=back.sideAI;GAME.phase=back.phase;
     refreshIdentity();hideOverlay();if(GAME.state){layout(GAME.state,false);updatePanel();syncUI();}
     if(back.returnTo==='setup')showSetup();else openMenu();return;
   }
@@ -2647,17 +2641,15 @@ function renderResultDialog(){
   const youName=escHtml(GAME.nameYou),oppName=escHtml(GAME.nameOpp);
   const playerWon=r.winner===GAME.sideHuman;
   const secondPerson=playerWon&&String(r.name).trim().toLowerCase()==='you';
-  const resultText=secondPerson?`You win ${r.matchOver?'the match':'the game'}!`:`${escHtml(r.name)} wins ${r.matchOver?'the match':'the game'}!`;
-  const celebration=playerWon?'<span class="resultCelebration" aria-hidden="true">🏆</span>':'';
+  const resultText=secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`;
+  const celebration=playerWon?'<span class="resultCelebration" aria-hidden="true">★</span>':'';
   const accuracy=s=>s.accuracy==null?'—':s.accuracy;
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
-  const nextActions=r.matchOver?
-    `<div class="outcomeFooter"><button class="pbtn" id="oRematch">REMATCH</button><button class="pbtn" id="oSetup">MENU</button></div>`:
-    `<div class="outcomeFooter" style="grid-template-columns:1fr"><button class="pbtn" id="oNext">NEXT GAME</button></div>`;
-  showOverlay(`<h2>Outcome</h2><div class="resultBanner">${celebration}<div class="resultTitle">${resultText}</div><div class="resultScore">${youName} ${r.you} <span aria-hidden="true">—</span> ${r.opp} ${oppName}</div></div><div class="accuracyGrid"><div class="accuracyPlayer"><span>${youName} accuracy</span><b>${accuracy(you)}${you.accuracy==null?'':'%'}</b><small>${you.total.toFixed(3)} total error</small></div><div class="accuracyPlayer"><span>${oppName} accuracy</span><b>${accuracy(opp)}${opp.accuracy==null?'':'%'}</b><small>${opp.total.toFixed(3)} total error</small></div></div><div class="accuracyNote">Accuracy is based on average equity lost per turn.</div><div class="qualityGrid"><div class="qualityHead">MOVE QUALITY</div><div class="qualityHead">${youName}</div><div class="qualityHead">${oppName}</div>${qualityRow('Brilliant',you.brilliant,opp.brilliant)}${qualityRow('Mistakes',you.mistakes,opp.mistakes)}${qualityRow('Blunders',you.blunders,opp.blunders)}</div><div class="reviewMeta">${moments.length} key moment${moments.length===1?'':'s'} flagged</div><button class="pbtn reviewPrimary" id="oReview">GAME REVIEW</button>${nextActions}`,'modalCard outcomeCard');
+  const nextActions=`<div class="outcomeFooter"><button class="pbtn" id="oRematch">REMATCH</button><button class="pbtn" id="oSetup">MENU</button></div>`;
+  showOverlay(`<h2>Outcome</h2><div class="resultBanner">${celebration}<div class="resultTitle">${resultText}</div><div class="resultScore">${r.points} point${r.points===1?'':'s'} · ${escHtml(r.info.label)}</div></div><div class="accuracyGrid"><div class="accuracyPlayer"><span>${youName} accuracy</span><b>${accuracy(you)}${you.accuracy==null?'':'%'}</b><small>${you.total.toFixed(3)} total error</small></div><div class="accuracyPlayer"><span>${oppName} accuracy</span><b>${accuracy(opp)}${opp.accuracy==null?'':'%'}</b><small>${opp.total.toFixed(3)} total error</small></div></div><div class="accuracyNote">Accuracy is based on average equity lost per turn.</div><div class="qualityGrid"><div class="qualityHead">MOVE QUALITY</div><div class="qualityHead">${youName}</div><div class="qualityHead">${oppName}</div>${qualityRow('Brilliant',you.brilliant,opp.brilliant)}${qualityRow('Mistakes',you.mistakes,opp.mistakes)}${qualityRow('Blunders',you.blunders,opp.blunders)}</div><div class="reviewMeta">${moments.length} key moment${moments.length===1?'':'s'} flagged</div><button class="pbtn reviewPrimary" id="oReview">GAME REVIEW</button>${nextActions}`,'modalCard outcomeCard');
   $('oReview').onclick=()=>{Snd.btn();const first=keyMoments()[0];showReplay(first?first.recordIndex+1:0);};
-  if(r.matchOver){$('oRematch').onclick=()=>{Snd.btn();hideOverlay();startMatch();};$('oSetup').onclick=()=>{Snd.btn();hideOverlay();showSetup();};}
-  else $('oNext').onclick=()=>{Snd.btn();hideOverlay();newGame();};
+  $('oRematch').onclick=()=>{Snd.btn();hideOverlay();newGame();};
+  $('oSetup').onclick=()=>{Snd.btn();hideOverlay();showSetup();};
 }
 async function showResultDialog(){
   if(!GAME.lastResult)return;GAME.phase='over';
@@ -2667,16 +2659,16 @@ async function showResultDialog(){
 }
 function endGame(winner){
   finishCurrentTurnRecord();GAME.phase='over';bumpToken();clearHL();syncUI();
-  const info=gammonInfo(GAME.state,winner),pts=info.mult;GAME.scores[winner]+=pts;updatePanel();
+  const info=gammonInfo(GAME.state,winner),pts=info.mult;updatePanel();
   let resultDelay=700;
   if(winner===GAME.sideHuman){Snd.win();resultDelay=celebrateVictory()||resultDelay;}else Snd.lose();
-  const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp,you=GAME.scores[GAME.sideHuman],opp=GAME.scores[GAME.sideAI];
-  GAME.lastResult={winner,name:wname,you,opp,matchOver:you>=GAME.matchTo||opp>=GAME.matchTo,state:cloneState(GAME.state),info};
+  const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp;
+  GAME.lastResult={winner,name:wname,points:pts,state:cloneState(GAME.state),info};
   const won=winner===GAME.sideHuman;
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
-    nameYou:GAME.nameYou,nameOpp:GAME.nameOpp,sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
-    resultLabel:won?`${GAME.nameYou} won`:`${GAME.nameOpp} won`,scoreLabel:`${you}–${opp}`,
+    nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
+    resultLabel:won?'You won':'Computer won',scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
   if(GAME.pastGames.length>10)GAME.pastGames.length=10;
@@ -2720,7 +2712,7 @@ function syncOrientationGate(){
     const waiters=ORIENTATION_PAUSE.resumeWaiters.splice(0);
     waiters.forEach(resolve=>resolve());
     if(Snd.ctx&&Snd.ctx.state!=='closed')Snd.resume(Snd.ctx,false);
-    requestAnimationFrame(pinRollButton);
+    requestAnimationFrame(refreshBoardFit);
   }
 }
 /* ---------- init ---------- */
@@ -2741,7 +2733,7 @@ function init(){
     if(GAME.phase!=='preroll')return;
     Snd.ensure();Snd.btn();onRoll();
   });
-  const refreshLayout=()=>{syncOrientationGate();requestAnimationFrame(pinRollButton);};
+  const refreshLayout=()=>{syncOrientationGate();requestAnimationFrame(refreshBoardFit);};
   window.addEventListener('resize',refreshLayout,{passive:true});
   window.addEventListener('orientationchange',refreshLayout,{passive:true});
   if(orientationMedia){
