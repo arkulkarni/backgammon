@@ -8,7 +8,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#d9c9a4" />
 <meta name="mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black" />
 <link rel="icon" href="data:," />
 <title>Backgammon</title>
 <style>
@@ -270,7 +270,7 @@ body.reviewing #reviewTimelineDock{
 .setRow{margin:18px 0 6px;}
 .setRow .setLabel{font-size:13px; font-weight:800; letter-spacing:.14em; color:#8a6a3c; margin-bottom:8px;}
 .pillRow{display:flex; gap:8px; flex-wrap:wrap;}
-.pillRow.difficultyRow{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));}
+.pillRow.difficultyRow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));}
 .pillRow.difficultyRow .pill{width:100%;min-width:0;}
 .pill{flex:1 1 auto; appearance:none; border:1px solid #ad8a4c; background:linear-gradient(180deg,#fffef9,#f4ead7); color:#755528; border-radius:9px; padding:10px 6px;
   box-shadow:0 2px 4px rgba(80,47,11,.16),inset 0 1px 0 #fff;
@@ -476,7 +476,7 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   .reviewCounter{margin-bottom:4px;}
 }
 </style>
-<link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Backgammon"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head>
+<link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black"><meta name="apple-mobile-web-app-title" content="Backgammon"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head>
 <body>
 <div id="app">
   <div id="playArea">
@@ -1068,11 +1068,9 @@ function applySeq(s,seq,c){let r=s;for(const m of seq)r=applyMove(r,m,c);return 
 // Targets are interpolated from the community XG PR↔Elo table
 // (PR = equity lost × 500), then expressed as equity lost per move.
 const AI_TIERS=Object.freeze({
-  casual:Object.freeze({label:'Casual',elo:1200,targetError:.058}),
-  club:Object.freeze({label:'Club',elo:1400,targetError:.045}),
-  advanced:Object.freeze({label:'Advanced',elo:1600,targetError:.035}),
-  expert:Object.freeze({label:'Expert',elo:1800,targetError:.025}),
-  grandmaster:Object.freeze({label:'Grandmaster',elo:2000,targetError:.014})
+  easy:Object.freeze({label:'Easy',elo:1200,targetError:.058}),
+  medium:Object.freeze({label:'Medium',elo:1600,targetError:.035}),
+  hard:Object.freeze({label:'Hard',elo:2000,targetError:.014})
 });
 function expectedSoftmaxError(errors,temp){
   if(temp===0)return 0;
@@ -1112,7 +1110,7 @@ function aiPick(state,dice,me,difficulty){
   }).sort((a,b)=>b.equity-a.equity);
   const best=ranked[0].equity;
   for(const choice of ranked)choice.error=Math.max(0,best-choice.equity);
-  const tier=AI_TIERS[difficulty]||AI_TIERS.expert;
+  const tier=AI_TIERS[difficulty]||AI_TIERS.medium;
   const temp=calibratedTemperature(ranked.map(c=>c.error),tier.targetError);
   return sampleSoftmax(ranked,temp).seq;
 }
@@ -1641,14 +1639,14 @@ function renderReviewMove(row,showAlternative){
 /* ================= controller ================= */
 const GAME={
   phase:'setup',token:0,
-  difficulty:'expert',
+  difficulty:'medium',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
   state:null,remaining:[],diceVals:[],seqs:[],snaps:[],history:[],turnHistoryStart:0,
   selected:null,destsNow:[],sourcesNow:[],record:[],turnStart:null,turnMoves:[],turnRecorded:false,lastResult:null,replayIndex:0,
   pastGames:[],reviewReturn:null,
 };
-const PREF={diff:'expert',humanBlack:true,tutor:false};
+const PREF={diff:'medium',humanBlack:true,tutor:false};
 const overlay=$('overlay'),overlayCard=$('overlayCard'),btnRoll=$('btnRoll');
 function bumpToken(){GAME.token++;}
 function toast(msg,ms){
@@ -1718,7 +1716,7 @@ function colorName(c){return c==='w'?'White':'Black';}
 /* ---------- setup screen ---------- */
 function showSetup(){
   GAME.phase='setup';syncUI();
-  const diffs=['casual','club','advanced','expert','grandmaster'].map(key=>[key,AI_TIERS[key]]);
+  const diffs=['easy','medium','hard'].map(key=>[key,AI_TIERS[key]]);
   showOverlay(`
    <div class="woodHead">
      <button class="headBtn past" id="sPastGames">PAST GAMES</button>
@@ -2120,7 +2118,7 @@ async function aiTurn(openingDice){
   const aiUndo=historySnapshot('computer-turn');
   startTurnRecord(GAME.sideAI,dice);
   const aiBefore=cloneState(GAME.state);
-  const tier=AI_TIERS[GAME.difficulty]||AI_TIERS.expert;
+  const tier=AI_TIERS[GAME.difficulty]||AI_TIERS.medium;
   await ensureGNUReady(tier.label+' computer');
   if(tok!==GAME.token)return;
   const seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);
@@ -2883,6 +2881,17 @@ function hookGame(){
       window.openMenu=wMenu;
     }
 
+    var origSetup=window.showSetup;
+    if(typeof origSetup==='function'&&!origSetup.__bgWrapped){
+      var wSetup=function(){
+        var r=origSetup.apply(this,arguments);
+        try{injectUserBar();}catch(e){}
+        return r;
+      };
+      wSetup.__bgWrapped=true;
+      window.showSetup=wSetup;
+    }
+
     document.addEventListener('click',onDocClick);
     return true;
   }catch(e){return false;}
@@ -3078,6 +3087,12 @@ function takeStashedMigration(){
   }catch(e){return [];}
 }
 
+function doSignOut(){
+  try{if(typeof Snd!=='undefined')Snd.btn();}catch(e){}
+  if(state.auth)state.auth.signOut().then(function(){location.reload();},function(){location.reload();});
+  else location.reload();
+}
+
 function addSignOut(){
   if(!(state.ready&&state.auth))return;
   if(!document.getElementById('mResume'))return; // only the real menu, not Past Games
@@ -3087,11 +3102,24 @@ function addSignOut(){
   var b=document.createElement('button');
   b.id='bgSignOut';b.className='pbtn';b.textContent='SIGN OUT';
   b.style.marginTop='10px';
-  b.onclick=function(){
-    try{if(typeof Snd!=='undefined')Snd.btn();}catch(e){}
-    state.auth.signOut().then(function(){location.reload();},function(){location.reload();});
-  };
+  b.onclick=function(){doSignOut();};
   card.appendChild(b);
+}
+
+/* Signed-in email + sign-out on the setup screen (below the difficulty row). */
+function injectUserBar(){
+  if(!(state.ready&&state.auth))return;
+  var body=document.querySelector('.setupBody');
+  if(!body||document.getElementById('bgUserBar'))return;
+  var email='';
+  try{email=state.auth.currentUser&&state.auth.currentUser.email||'';}catch(e){}
+  var bar=document.createElement('div');
+  bar.id='bgUserBar';
+  bar.style.cssText='margin:14px 0 0;font-size:12.5px;color:#8a6f4d;text-align:center;line-height:1.6;';
+  bar.innerHTML='Signed in as <b>'+esc(email)+'</b><br><a href="#" id="bgSignOutSetup" style="color:#7a4a1e;font-weight:700;">Sign out</a>';
+  body.appendChild(bar);
+  var so=document.getElementById('bgSignOutSetup');
+  if(so)so.onclick=function(ev){if(ev&&ev.preventDefault)ev.preventDefault();doSignOut();return false;};
 }
 
 /* ---------------- Firestore save / load ---------------- */
@@ -3218,6 +3246,7 @@ function onSignedIn(user){
   state.uid=user.uid;
   state.ready=true;
   hideLoginGate();
+  try{injectUserBar();}catch(e){}
   var mig=state.pendingMigration||[];
   state.pendingMigration=[];
   var stashed=takeStashedMigration();
