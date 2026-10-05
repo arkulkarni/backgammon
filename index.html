@@ -2792,15 +2792,17 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
 </script>
 <script>
 /* BackgammonCloud: Firebase past-game sync (injected at deploy time) */
-/* Backgammon <-> Firebase Firestore sync, with required Google sign-in.
+/* Backgammon <-> Firebase Firestore sync, with required email/password sign-in.
  *
- * WHAT: Google sign-in is REQUIRED to use the app. On first launch the user
- * signs in with their Google account (popup in browsers, redirect in
- * home-screen web apps); the session persists, so it is a one-time step
- * per browser. Finished games save to the signed-in user's private Firestore
- * collection users/{uid}/games, so one Google account = one shared history
- * across all devices and browsers. Games saved earlier under an anonymous
- * id are migrated into the Google account on first sign-in.
+ * WHAT: Email/password sign-in is REQUIRED to use the app. On first launch the
+ * user creates an account (or signs in); the session persists, so it is a
+ * one-time step per browser. Finished games save to the signed-in user's
+ * private Firestore collection users/{uid}/games, so one account = one shared
+ * history across all devices and browsers. Email/password was chosen over
+ * Google OAuth because Google blocks OAuth inside iOS home-screen web apps
+ * (disallowed_useragent); the email flow is pure API calls and works
+ * everywhere. Games saved earlier under an anonymous id are migrated into the
+ * account on first sign-in.
  *
  * Past Games (menu + setup screen) merges cloud games newest-first with any
  * unsaved session entries. Tapping a cloud entry opens Game Review replay.
@@ -2815,7 +2817,7 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
  * plus a full-screen login gate overlay shown until sign-in completes.
  *
  * FAILURE MODE: anything Firebase-related that fails before sign-in keeps the
- * login gate up with a plain-language error and a retry (the Google button).
+ * login gate up with a plain-language error for another attempt.
  * After sign-in, Firestore failures are silent: session-only history, no UI,
  * no popups, at most one console.warn.
  */
@@ -2950,12 +2952,19 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 
 function authErrorMessage(err){
   var code=err&&err.code?String(err.code):'';
-  if(code==='auth/operation-not-allowed')return'Google sign-in is not enabled for this app yet. Enable it in the Firebase console, then try again.';
-  if(code==='auth/network-request-failed')return'Could not reach Google. Check your connection and try again.';
-  if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request')return'Sign-in was closed before finishing. Please try again.';
-  if(code==='auth/unauthorized-domain')return'This site is not authorized for sign-in. Add its domain under Authentication → Settings → Authorized domains.';
+  if(code==='auth/operation-not-allowed')return'Email sign-in is not enabled for this app yet. Enable Email/Password in the Firebase console, then try again.';
+  if(code==='auth/invalid-email')return'That email address doesn\u2019t look right.';
+  if(code==='auth/user-not-found')return'No account found for that email. Tap \u201CCreate account\u201D below to make one.';
+  if(code==='auth/wrong-password'||code==='auth/invalid-credential')return'Wrong email or password. Try again, or tap \u201CForgot password?\u201D.';
+  if(code==='auth/email-already-in-use')return'That email already has an account. Sign in instead.';
+  if(code==='auth/weak-password')return'Please choose a password with at least 6 characters.';
+  if(code==='auth/too-many-requests')return'Too many attempts. Please wait a bit and try again.';
+  if(code==='auth/network-request-failed')return'Could not reach the sign-in server. Check your connection and try again.';
+  if(code==='auth/unauthorized-domain')return'This site is not authorized for sign-in. Add its domain under Authentication \u2192 Settings \u2192 Authorized domains.';
   return'Sign-in did not complete. Please try again.';
 }
+
+var emailMode='signin'; // or 'signup'
 
 function showLoginGate(msg){
   var gate=document.getElementById('bgLoginGate');
@@ -2964,88 +2973,81 @@ function showLoginGate(msg){
     if(errEl&&msg){errEl.textContent=msg;errEl.style.display='block';}
     return;
   }
-  // Google forbids OAuth inside iOS home-screen web apps (disallowed_useragent,
-  // enforced since 2021; no website-side workaround). Don't offer the doomed
-  // button there; point the user at Safari instead.
-  var iosStandalone=isIOSStandalone();
   var d=document.createElement('div');
   d.id='bgLoginGate';
   d.setAttribute('style',GATE_CSS);
+  var inputCss='display:block;width:100%;padding:13px 12px;margin:0 0 10px;border:1px solid #c9b98f;border-radius:10px;background:#fffdf6;font-size:16px;color:#3c3226;box-sizing:border-box;';
   d.innerHTML=
     '<div style="max-width:360px;width:100%;text-align:center;background:#f3e6c8;border-radius:16px;padding:28px 24px;box-shadow:0 18px 60px rgba(0,0,0,.6);box-sizing:border-box;">'
     +'<div style="font:800 30px Georgia,serif;color:#7a4a1e;letter-spacing:.06em;margin-bottom:6px;">BACKGAMMON</div>'
-    +'<p style="color:#8a6f4d;font-size:13px;margin:0 0 18px;">Sign in to play.<br>Your games save to your Google account and follow you across devices.</p>'
-    +(iosStandalone
-      ?'<p style="color:#a83226;font-size:14px;margin:0 0 6px;line-height:1.5;">Google sign-in can\u2019t open inside the home-screen app \u2014 Google blocks it there.<br><br>Please open this page in <b>Safari</b> to sign in.</p>'
-      :'<button id="bgGoogleBtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px;border:1px solid #c9b98f;border-radius:10px;background:#fff;font-size:15px;font-weight:700;color:#3c4043;cursor:pointer;">'
-      +'<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>'
-      +'Sign in with Google</button>')
+    +'<p style="color:#8a6f4d;font-size:13px;margin:0 0 18px;">Sign in to play.<br>Your games save to your account and follow you across devices.</p>'
+    +'<input id="bgEmail" type="email" placeholder="Email" autocomplete="email" autocapitalize="none" spellcheck="false" style="'+inputCss+'">'
+    +'<input id="bgPass" type="password" placeholder="Password" autocomplete="current-password" style="'+inputCss+'">'
+    +'<button id="bgEmailBtn" style="display:block;width:100%;padding:13px;border:none;border-radius:10px;background:#7a4a1e;color:#fff8ea;font-size:16px;font-weight:700;cursor:pointer;">Sign In</button>'
+    +'<p style="font-size:13px;margin:14px 0 0;color:#8a6f4d;"><a id="bgModeToggle" href="#" style="color:#7a4a1e;font-weight:700;text-decoration:none;">New here? Create account</a>'
+    +' &nbsp;\u00B7&nbsp; <a id="bgForgot" href="#" style="color:#7a4a1e;text-decoration:none;">Forgot password?</a></p>'
     +'<p id="bgLoginErr" style="display:'+(msg?'block':'none')+';color:#a83226;font-size:12.5px;margin:12px 0 0;">'+esc(msg||'')+'</p>'
-    +'<p style="color:#8a6f4d;font-size:10px;margin:10px 0 0;opacity:.55;">build 6</p>'
+    +'<p style="color:#8a6f4d;font-size:10px;margin:10px 0 0;opacity:.55;">build 7</p>'
     +'</div>';
   document.body.appendChild(d);
   state.gateShown=true;
-  var btn=document.getElementById('bgGoogleBtn');
-  if(btn)btn.onclick=function(){startGoogleSignIn();};
+  var btn=document.getElementById('bgEmailBtn');
+  var emailEl=document.getElementById('bgEmail');
+  var passEl=document.getElementById('bgPass');
+  var toggle=document.getElementById('bgModeToggle');
+  var forgot=document.getElementById('bgForgot');
+  function refreshMode(){
+    btn.textContent=emailMode==='signup'?'Create Account':'Sign In';
+    toggle.textContent=emailMode==='signup'?'Have an account? Sign in':'New here? Create account';
+    if(passEl)passEl.setAttribute('autocomplete',emailMode==='signup'?'new-password':'current-password');
+  }
+  if(btn)btn.onclick=function(){startEmailAuth();};
+  if(toggle)toggle.onclick=function(ev){if(ev&&ev.preventDefault)ev.preventDefault();emailMode=emailMode==='signup'?'signin':'signup';refreshMode();return false;};
+  if(forgot)forgot.onclick=function(ev){if(ev&&ev.preventDefault)ev.preventDefault();forgotPassword();return false;};
+  if(passEl)passEl.onkeydown=function(ev){if(ev&&(ev.key==='Enter'||ev.keyCode===13)){startEmailAuth();}};
+  refreshMode();
+  setTimeout(function(){try{if(emailEl)emailEl.focus();}catch(e){}},400);
 }
 
-function isStandalone(){
-  try{
-    return (window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true;
-  }catch(e){return false;}
+function gateEmailPass(){
+  var e=document.getElementById('bgEmail'),p=document.getElementById('bgPass');
+  return {email:e?e.value.trim():'',pass:p?p.value:''};
 }
 
-function isIOSStandalone(){
-  try{
-    if(!isStandalone())return false;
-    var ua=window.navigator.userAgent||'';
-    var plat=window.navigator.platform||'';
-    return /iPad|iPhone|iPod/.test(ua)||(plat==='MacIntel'&&(window.navigator.maxTouchPoints||0)>1);
-  }catch(e){return false;}
+function startEmailAuth(){
+  var creds=gateEmailPass();
+  if(!creds.email){showLoginGate('Please enter your email address.');return;}
+  if(!creds.pass){showLoginGate('Please enter your password.');return;}
+  if(emailMode==='signup'&&creds.pass.length<6){showLoginGate('Please choose a password with at least 6 characters.');return;}
+  var btn=document.getElementById('bgEmailBtn');
+  if(btn)btn.disabled=true;
+  var done=function(){var b=document.getElementById('bgEmailBtn');if(b)b.disabled=false;};
+  var op=emailMode==='signup'
+    ?state.auth.createUserWithEmailAndPassword(creds.email,creds.pass)
+    :state.auth.signInWithEmailAndPassword(creds.email,creds.pass);
+  op.then(function(cred){
+    if(cred&&cred.user)onSignedIn(cred.user);
+    else done();
+  },function(err){
+    done();
+    showLoginGate(authErrorMessage(err));
+  });
+}
+
+function forgotPassword(){
+  var creds=gateEmailPass();
+  if(!creds.email){showLoginGate('Enter your email above first, then tap \u201CForgot password?\u201D.');return;}
+  state.auth.sendPasswordResetEmail(creds.email).then(function(){
+    showLoginGate('Password reset email sent. Check your inbox, then sign in with your new password.');
+  },function(err){
+    showLoginGate(authErrorMessage(err));
+  });
 }
 
 function hideLoginGate(){
   var d=document.getElementById('bgLoginGate');
   if(d&&d.parentNode)d.parentNode.removeChild(d);
   state.gateShown=false;
-}
-
-function startGoogleSignIn(){
-  var btn=document.getElementById('bgGoogleBtn');
-  if(btn)btn.disabled=true;
-  var enableBtn=function(){var b=document.getElementById('bgGoogleBtn');if(b)b.disabled=false;};
-  try{
-    // Stash any pre-login games: a redirect reloads the page, wiping memory.
-    try{sessionStorage.setItem('bgMig',serializeDocs(state.pendingMigration||[]));}catch(e){}
-    var provider=new firebase.auth.GoogleAuthProvider();
-    if(isStandalone()){
-      // A popup can't return to a standalone home-screen web app; redirect there.
-      // (On iOS the gate already steers users to Safari; this is the fallback.)
-      state.auth.signInWithRedirect(provider);
-      return;
-    }
-    // Popup keeps the whole flow on this page: no navigation round-trip whose
-    // completion can get lost (the failure seen on iPad Safari with redirect).
-    state.auth.signInWithPopup(provider).then(function(cred){
-      if(cred&&cred.user)onSignedIn(cred.user);
-      else enableBtn();
-    },function(err){
-      var code=err&&err.code||'';
-      if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request'){
-        enableBtn(); // user bailed out; leave the gate as-is
-        return;
-      }
-      if(code==='auth/popup-blocked'||code==='auth/operation-not-supported-in-this-environment'){
-        try{state.auth.signInWithRedirect(provider);}catch(e2){enableBtn();showLoginGate(authErrorMessage(e2));}
-        return;
-      }
-      enableBtn();
-      showLoginGate(authErrorMessage(err));
-    });
-  }catch(e){
-    enableBtn();
-    showLoginGate(authErrorMessage(e));
-  }
 }
 
 /* Firestore Timestamps do not survive JSON; convert to millis and back. */
@@ -3196,7 +3198,7 @@ function loadCloudGames(){
   });
 }
 
-/* Copy games saved under the pre-login anonymous id into the Google account. */
+/* Copy games saved under the pre-login anonymous id into the signed-in account. */
 function migrateAnonGames(docs){
   if(!docs.length)return Promise.resolve();
   var col=state.db.collection('users').doc(state.uid).collection('games');
@@ -3251,8 +3253,7 @@ function boot(){
       firebase.initializeApp(FB_CONFIG);
       state.auth=firebase.auth();
       state.db=firebase.firestore();
-      // Primary sign-in detector: fires on redirect completions, restored
-      // sessions, and cross-tab sign-ins even when getRedirectResult is empty.
+      // Sign-in detector: fires on restored sessions and cross-tab sign-ins.
       try{
         state.auth.onAuthStateChanged(function(u){
           if(u&&!u.isAnonymous) onSignedIn(u);
@@ -3260,27 +3261,21 @@ function boot(){
       }catch(e){}
       // Show the gate promptly unless a session is already restoring.
       setTimeout(function(){ if(!state.ready) showLoginGate(); },600);
-      // Completes a Google redirect initiated by this page; surfaces failures.
-      state.auth.getRedirectResult().then(function(result){
-        if(result&&result.user){ onSignedIn(result.user); return; }
-        // No redirect result: once the observer has had a chance to report a
-        // restored session, look for migratable pre-login games. Best effort:
-        // the anonymous provider may be disabled, in which case this skips.
-        setTimeout(function(){
-          if(state.ready) return;
-          var u=null; try{ u=state.auth.currentUser; }catch(e){}
-          if(u&&!u.isAnonymous){ onSignedIn(u); return; }
-          state.auth.signInAnonymously().then(function(cred){
-            return readGameDocs(cred.user.uid);
-          }).then(function(docs){
-            state.pendingMigration=docs;
-          }).catch(function(){
-            state.pendingMigration=[];
-          });
-        },1500);
-      },function(err){
-        showLoginGate(authErrorMessage(err));
-      });
+      // Once the observer has had a chance to report a restored session, look
+      // for migratable pre-login games. Best effort: the anonymous provider may
+      // be disabled, in which case this skips.
+      setTimeout(function(){
+        if(state.ready) return;
+        var u=null; try{ u=state.auth.currentUser; }catch(e){}
+        if(u&&!u.isAnonymous){ onSignedIn(u); return; }
+        state.auth.signInAnonymously().then(function(cred){
+          return readGameDocs(cred.user.uid);
+        }).then(function(docs){
+          state.pendingMigration=docs;
+        }).catch(function(){
+          state.pendingMigration=[];
+        });
+      },1500);
     })
     .then(null,function(){
       // SDK scripts failed to load (offline etc.)
