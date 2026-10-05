@@ -2792,24 +2792,32 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
 </script>
 <script>
 /* BackgammonCloud: Firebase past-game sync (injected at deploy time) */
-/* Backgammon <-> Firebase Firestore sync.
+/* Backgammon <-> Firebase Firestore sync, with required Google sign-in.
  *
- * WHAT: saves every completed game to the signed-in user's private Firestore
- * collection and merges those cloud games into the menu's PAST GAMES section.
- * Tapping a cloud entry opens the existing Game Review replay, exactly like a
- * session entry.
+ * WHAT: Google sign-in is REQUIRED to use the app. On first launch the user
+ * signs in with their Google account (redirect flow, works in mobile browsers
+ * and home-screen web apps); the session persists, so it is a one-time step
+ * per browser. Finished games save to the signed-in user's private Firestore
+ * collection users/{uid}/games, so one Google account = one shared history
+ * across all devices and browsers. Games saved earlier under an anonymous
+ * id are migrated into the Google account on first sign-in.
+ *
+ * Past Games (menu + setup screen) merges cloud games newest-first with any
+ * unsaved session entries. Tapping a cloud entry opens Game Review replay.
  *
  * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
  * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
- * modify backgammon.html. It monkey-patches two globals at load:
+ * modify backgammon.html. It monkey-patches at load:
  *   - window.endGame           -> after a game ends, queue a Firestore save
  *   - window.pastGamesListHtml -> render cloud games + unsaved session games
- *     inside the dedicated Past Games screen (Menu -> PAST GAMES button)
- * plus one delegated document click listener for [data-cloudgame] buttons.
+ *   - window.openMenu          -> append a SIGN OUT button
+ * plus one delegated document click listener for [data-cloudgame] buttons,
+ * plus a full-screen login gate overlay shown until sign-in completes.
  *
- * FAILURE MODE: anything Firebase-related that fails (CDN unreachable, auth
- * failure, Firestore errors) leaves the game behaving exactly as before:
- * session-only Past Games, no UI, no popups, at most one console.warn.
+ * FAILURE MODE: anything Firebase-related that fails before sign-in keeps the
+ * login gate up with a plain-language error and a retry (the Google button).
+ * After sign-in, Firestore failures are silent: session-only history, no UI,
+ * no popups, at most one console.warn.
  */
 (function(){
 'use strict';
@@ -2833,7 +2841,7 @@ function warnOnce(msg){
   try{console.warn('[bg-firebase-sync] '+msg);}catch(e){}
 }
 
-var state={ready:false,uid:null,db:null};
+var state={ready:false,uid:null,db:null,auth:null,pendingMigration:[],gateShown:false};
 
 /* ---------------- game hooks (installed synchronously, always safe) ---------------- */
 function hookGame(){
@@ -2860,6 +2868,17 @@ function hookGame(){
       wList.__bgWrapped=true;
       wList.__bgOrig=origList;
       window.pastGamesListHtml=wList;
+    }
+
+    var origMenu=window.openMenu;
+    if(typeof origMenu==='function'&&!origMenu.__bgWrapped){
+      var wMenu=function(){
+        var r=origMenu.apply(this,arguments);
+        try{addSignOut();}catch(e){}
+        return r;
+      };
+      wMenu.__bgWrapped=true;
+      window.openMenu=wMenu;
     }
 
     document.addEventListener('click',onDocClick);
@@ -2923,6 +2942,107 @@ function mergedPastGamesListHtml(){
   return all.join('');
 }
 
+/* ---------------- login gate ---------------- */
+var GATE_CSS='position:fixed;inset:0;z-index:500;display:flex;align-items:center;justify-content:center;'
+  +'background:radial-gradient(1300px 850px at 45% 30%,#2b1c12,#150d08);padding:20px;box-sizing:border-box;';
+
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+function authErrorMessage(err){
+  var code=err&&err.code?String(err.code):'';
+  if(code==='auth/operation-not-allowed')return'Google sign-in is not enabled for this app yet. Enable it in the Firebase console, then try again.';
+  if(code==='auth/network-request-failed')return'Could not reach Google. Check your connection and try again.';
+  if(code==='auth/popup-closed-by-user'||code==='auth/cancelled-popup-request')return'Sign-in was closed before finishing. Please try again.';
+  if(code==='auth/unauthorized-domain')return'This site is not authorized for sign-in. Add its domain under Authentication → Settings → Authorized domains.';
+  return'Sign-in did not complete. Please try again.';
+}
+
+function showLoginGate(msg){
+  var gate=document.getElementById('bgLoginGate');
+  if(gate){
+    var errEl=document.getElementById('bgLoginErr');
+    if(errEl&&msg){errEl.textContent=msg;errEl.style.display='block';}
+    return;
+  }
+  var d=document.createElement('div');
+  d.id='bgLoginGate';
+  d.setAttribute('style',GATE_CSS);
+  d.innerHTML=
+    '<div style="max-width:360px;width:100%;text-align:center;background:#f3e6c8;border-radius:16px;padding:28px 24px;box-shadow:0 18px 60px rgba(0,0,0,.6);box-sizing:border-box;">'
+    +'<div style="font:800 30px Georgia,serif;color:#7a4a1e;letter-spacing:.06em;margin-bottom:6px;">BACKGAMMON</div>'
+    +'<p style="color:#8a6f4d;font-size:13px;margin:0 0 18px;">Sign in to play.<br>Your games save to your Google account and follow you across devices.</p>'
+    +'<button id="bgGoogleBtn" style="display:flex;align-items:center;justify-content:center;gap:10px;width:100%;padding:12px;border:1px solid #c9b98f;border-radius:10px;background:#fff;font-size:15px;font-weight:700;color:#3c4043;cursor:pointer;">'
+    +'<svg width="18" height="18" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.7-.4-3.9z"/><path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.3 6.1 29.4 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/><path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/><path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.7-.4-3.9z"/></svg>'
+    +'Sign in with Google</button>'
+    +'<p id="bgLoginErr" style="display:'+(msg?'block':'none')+';color:#a83226;font-size:12.5px;margin:12px 0 0;">'+esc(msg||'')+'</p>'
+    +'</div>';
+  document.body.appendChild(d);
+  state.gateShown=true;
+  var btn=document.getElementById('bgGoogleBtn');
+  if(btn)btn.onclick=function(){startGoogleSignIn();};
+}
+
+function hideLoginGate(){
+  var d=document.getElementById('bgLoginGate');
+  if(d&&d.parentNode)d.parentNode.removeChild(d);
+  state.gateShown=false;
+}
+
+function startGoogleSignIn(){
+  try{
+    // Stash any pre-login games: the redirect reloads the page, wiping memory.
+    try{sessionStorage.setItem('bgMig',serializeDocs(state.pendingMigration||[]));}catch(e){}
+    var provider=new firebase.auth.GoogleAuthProvider();
+    state.auth.signInWithRedirect(provider);
+  }catch(e){
+    showLoginGate(authErrorMessage(e));
+  }
+}
+
+/* Firestore Timestamps do not survive JSON; convert to millis and back. */
+function serializeDocs(docs){
+  return JSON.stringify(docs||[],function(k,v){
+    if(v&&typeof v==='object'&&typeof v.toDate==='function'){
+      return {__ts:v.toDate().getTime()};
+    }
+    return v;
+  });
+}
+function deserializeDocs(s){
+  if(!s)return [];
+  try{
+    return JSON.parse(s,function(k,v){
+      if(v&&typeof v==='object'&&typeof v.__ts==='number'){
+        return new firebase.firestore.Timestamp(Math.floor(v.__ts/1000),(v.__ts%1000)*1e6);
+      }
+      return v;
+    });
+  }catch(e){return [];}
+}
+function takeStashedMigration(){
+  try{
+    var s=sessionStorage.getItem('bgMig');
+    sessionStorage.removeItem('bgMig');
+    return deserializeDocs(s);
+  }catch(e){return [];}
+}
+
+function addSignOut(){
+  if(!(state.ready&&state.auth))return;
+  if(!document.getElementById('mResume'))return; // only the real menu, not Past Games
+  if(document.getElementById('bgSignOut'))return;
+  var card=document.querySelector('.menuList');
+  if(!card)return;
+  var b=document.createElement('button');
+  b.id='bgSignOut';b.className='pbtn';b.textContent='SIGN OUT';
+  b.style.marginTop='10px';
+  b.onclick=function(){
+    try{if(typeof Snd!=='undefined')Snd.btn();}catch(e){}
+    state.auth.signOut().then(function(){location.reload();},function(){location.reload();});
+  };
+  card.appendChild(b);
+}
+
 /* ---------------- Firestore save / load ---------------- */
 function num(n){return typeof n==='number'&&isFinite(n)?n:null;}
 
@@ -2939,24 +3059,22 @@ function buildDoc(entry){
     var pick=function(s){
       return s?{total:num(s.total),brilliant:s.brilliant,mistakes:s.mistakes,blunders:s.blunders,accuracy:s.accuracy}:null;
     };
-    // NOTE: rows without computed analysis are excluded by analysisSummary;
-    // accuracy may be null if the evaluator had not run by game end. Replay
-    // recomputes analysis on demand via analyzeMissingRecords().
     acc={you:pick(humanAnalysisSummary()),opp:pick(analysisSummary(GAME.sideAI))};
   }catch(e){acc=null;}
   return {
     syncId:entry._syncId,
     createdAt:firebase.firestore.FieldValue.serverTimestamp(),
-    appVersion:1,
+    appVersion:2,
     result:entry.resultLabel,resultLabel:entry.resultLabel,scoreLabel:entry.scoreLabel,
     scores:{you:lr.you!=null?lr.you:null,opp:lr.opp!=null?lr.opp:null},
+    points:lr.points!=null?lr.points:null,
     winner:lr.winner||null,matchOver:!!lr.matchOver,
     difficulty:tierKey,difficultyLabel:tierLabel,difficultyElo:tierElo,
     nameYou:entry.nameYou,nameOpp:entry.nameOpp,
     sideHuman:entry.sideHuman,sideAI:entry.sideAI,
     accuracy:acc,
-    record:entry.record,     // full replay record (moves, dice, board states)
-    lastResult:lr,           // includes final board state + scores
+    record:entry.record,
+    lastResult:lr,
     dateLabel:entry.dateLabel
   };
 }
@@ -2973,14 +3091,14 @@ function cloudViewOf(entry,cloudId){
 }
 
 function saveGame(entry){
-  if(!state.ready||!state.db||!state.uid)return; // not ready: stays session-only
+  if(!state.ready||!state.db||!state.uid)return;
   var doc;
   try{doc=buildDoc(entry);}catch(e){warnOnce('could not build save record');return;}
   try{
     state.db.collection('users').doc(state.uid).collection('games').add(doc).then(function(ref){
       entry._cloudId=ref.id;
       GAME.cloudGames.unshift(cloudViewOf(entry,ref.id));
-    },function(err){
+    },function(){
       warnOnce('save failed; game kept for this session only');
     });
   }catch(e){warnOnce('save failed; game kept for this session only');}
@@ -2994,31 +3112,74 @@ function fmtDate(ts){
   }catch(e){return '';}
 }
 
-function loadCloudGames(){
-  if(!state.ready||!state.db||!state.uid)return;
-  state.db.collection('users').doc(state.uid).collection('games')
+/* Raw game documents for a uid (used for both loading and migration). */
+function readGameDocs(uid){
+  return state.db.collection('users').doc(uid).collection('games')
     .orderBy('createdAt','desc').limit(50).get()
     .then(function(snap){
-      var list=[];
+      var out=[];
       snap.forEach(function(doc){
         var d=doc.data()||{};
-        if(!d.record||!d.lastResult)return; // skip corrupt docs
-        list.push({
-          cloudId:doc.id,syncId:d.syncId||null,
-          record:d.record,lastResult:d.lastResult,
-          nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
-          sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
-          resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
-          dateLabel:d.dateLabel||fmtDate(d.createdAt)
-        });
+        if(!d.record||!d.lastResult)return;
+        out.push(d);
       });
-      GAME.cloudGames=list;
-    },function(err){
-      warnOnce('could not load cloud games; showing session history only');
+      return out;
     });
 }
 
-/* ---------------- Firebase boot (fully silent on failure) ---------------- */
+function docToView(docId,d){
+  return {
+    cloudId:docId,syncId:d.syncId||null,
+    record:d.record,lastResult:d.lastResult,
+    nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
+    sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
+    resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
+    dateLabel:d.dateLabel||fmtDate(d.createdAt)
+  };
+}
+
+function loadCloudGames(){
+  if(!state.ready||!state.db||!state.uid)return;
+  readGameDocs(state.uid).then(function(docs){
+    GAME.cloudGames=docs.map(function(d,i){return docToView('g'+i,d);});
+  },function(){
+    warnOnce('could not load cloud games; showing session history only');
+  });
+}
+
+/* Copy games saved under the pre-login anonymous id into the Google account. */
+function migrateAnonGames(docs){
+  if(!docs.length)return Promise.resolve();
+  var col=state.db.collection('users').doc(state.uid).collection('games');
+  return Promise.all(docs.map(function(d){
+    var copy={};
+    for(var k in d){if(Object.prototype.hasOwnProperty.call(d,k))copy[k]=d[k];}
+    copy.appVersion=2;
+    copy.migratedFrom='anonymous';
+    return col.add(copy);
+  })).then(function(){},function(){warnOnce('some older games could not be carried over');});
+}
+
+/* ---------------- sign-in flow ---------------- */
+function onSignedIn(user){
+  state.uid=user.uid;
+  state.ready=true;
+  hideLoginGate();
+  var mig=state.pendingMigration||[];
+  state.pendingMigration=[];
+  var stashed=takeStashedMigration();
+  if(stashed.length) mig=mig.concat(stashed);
+  // De-dupe by syncId: the same doc may be in both lists.
+  var seen={},uniq=[];
+  mig.forEach(function(d){var k=d&&d.syncId||null;if(k&&seen[k])return;if(k)seen[k]=1;uniq.push(d);});
+  var done=function(){loadCloudGames();};
+  if(uniq.length){
+    migrateAnonGames(uniq).then(done,done);
+  }else{
+    done();
+  }
+}
+
 function loadScript(src){
   return new Promise(function(res,rej){
     var s=document.createElement('script');
@@ -3031,21 +3192,41 @@ function loadScript(src){
 
 function boot(){
   var base='https://www.gstatic.com/firebasejs/'+FB_SDK_VER+'/';
-  var chain=loadScript(base+'firebase-app-compat.js')
+  loadScript(base+'firebase-app-compat.js')
     .then(function(){return loadScript(base+'firebase-auth-compat.js');})
     .then(function(){return loadScript(base+'firebase-firestore-compat.js');})
     .then(function(){
       if(!window.firebase||!firebase.firestore||!firebase.auth)throw new Error('sdk incomplete');
       firebase.initializeApp(FB_CONFIG);
+      state.auth=firebase.auth();
       state.db=firebase.firestore();
-      return firebase.auth().signInAnonymously();
+      // 1. completing a Google redirect?
+      return state.auth.getRedirectResult().then(function(result){
+        if(result&&result.user){onSignedIn(result.user);return 'done';}
+        // 2. already signed in (persisted session)?
+        var u=state.auth.currentUser;
+        if(u&&!u.isAnonymous){onSignedIn(u);return 'done';}
+        // 3. need login: sign in anonymously to find migratable games, then gate
+        var anonSignIn=u&&u.isAnonymous
+          ? Promise.resolve(u)
+          : state.auth.signInAnonymously().then(function(cred){return cred.user;});
+        return anonSignIn.then(function(anonUser){
+          return readGameDocs(anonUser.uid).then(function(docs){
+            state.pendingMigration=docs;
+            showLoginGate();
+            return 'gated';
+          },function(){
+            state.pendingMigration=[];
+            showLoginGate();
+            return 'gated';
+          });
+        });
+      });
     })
-    .then(function(cred){
-      state.uid=cred.user.uid;
-      state.ready=true;
-      loadCloudGames();
+    .then(null,function(err){
+      // getRedirectResult failures (provider not enabled, network, etc.)
+      showLoginGate(authErrorMessage(err));
     });
-  chain.then(null,function(err){warnOnce('unavailable; using session-only history');});
 }
 
 /* ---------------- go ---------------- */
