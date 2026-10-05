@@ -232,7 +232,7 @@ body.reviewing #reviewTimelineDock{
   box-shadow:0 18px 60px rgba(0,0,0,.6);}
 .woodHead{
   background:linear-gradient(180deg,#8a4a24,#5c2d12); padding:12px 14px 18px;
-  display:grid; grid-template-columns:1fr auto auto 1fr; grid-template-rows:auto auto;
+  display:grid; grid-template-columns:1fr auto 1fr; grid-template-rows:auto auto;
   column-gap:8px; row-gap:10px; align-items:start; text-align:center;
   box-shadow:inset 0 -4px 12px rgba(0,0,0,.35);
 }
@@ -245,8 +245,7 @@ body.reviewing #reviewTimelineDock{
   text-shadow:0 1px 0 #a3552a, 0 2px 0 #8a421f, 0 3px 0 #6e3013, 0 4px 0 #54240b, 0 6px 14px rgba(0,0,0,.6);
 }
 .headBtn{position:static; padding:10px 22px; font-size:14px;}
-.headBtn.back{justify-self:start; border-color:#4f170f; background:linear-gradient(180deg,#8c3325 0%,#6d2118 52%,#4c150f 100%);}
-.headBtn.past{justify-self:center;padding-inline:13px;font-size:12px;white-space:nowrap;}
+.headBtn.past{justify-self:start;padding-inline:13px;font-size:12px;white-space:nowrap;}
 .headBtn.fullscreen{justify-self:center;padding-inline:12px;font-size:11px;white-space:nowrap;}
 .headBtn.fullscreen.on{border-color:#a97812;box-shadow:0 0 0 2px rgba(255,209,46,.32),0 5px 11px rgba(35,14,6,.42),inset 0 1px 0 rgba(255,255,255,.3);}
 .headBtn.fullscreen:disabled{opacity:.48;cursor:default;filter:saturate(.55);}
@@ -1677,7 +1676,6 @@ function showSetup(){
   const mts=[1,3,5,7,11,15],fsAvailable=fullscreenAvailable(),fsOn=isFullscreen();
   showOverlay(`
    <div class="woodHead">
-     <button class="headBtn back" id="sBack">BACK</button>
      <button class="headBtn past" id="sPastGames">PAST GAMES</button>
      <button class="headBtn fullscreen${fsOn?' on':''}" id="sFullscreen" type="button" data-fullscreen-control aria-pressed="${fsOn}" aria-label="Fullscreen. ${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}" title="${fsAvailable?(fsOn?'Tap to return to the browser':'Fill the iPad display'):'Not available in this browser'}"${fsAvailable?'':' disabled'}>${fsAvailable?(fsOn?'FULLSCREEN ON':'FULLSCREEN'):'FULLSCREEN N/A'}</button>
      <button class="headBtn start" id="sStart">START</button>
@@ -1697,7 +1695,6 @@ function showSetup(){
      </div>
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
    </div>`,'card setupCard');
-  $('sBack').onclick=()=>{Snd.btn();hideOverlay();if(GAME.phase==='setup'&&GAME.state){GAME.phase='over';}else{GAME.phase='over';}};
   $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
   wireFullscreenControl($('sFullscreen'));
   $('sStart').onclick=()=>{
