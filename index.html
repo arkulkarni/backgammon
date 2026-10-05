@@ -1828,7 +1828,9 @@ function openArchivedGame(index){
   GAME.lastResult=JSON.parse(JSON.stringify(archived.lastResult));
   GAME.nameYou='You';GAME.nameOpp='Computer';
   GAME.sideHuman=archived.sideHuman;GAME.sideAI=archived.sideAI;
-  refreshIdentity();hideOverlay();showReplay(0);
+  refreshIdentity();hideOverlay();
+  const first=keyMoments()[0];
+  showReplay(first?first.recordIndex:0,!!first);
 }
 function pastGamesListHtml(){
   if(!GAME.pastGames.length)return'<div class="pastEmpty">No completed games this session</div>';
@@ -3017,7 +3019,9 @@ function openCloudGame(entry){
   GAME.lastResult=JSON.parse(JSON.stringify(entry.lastResult));
   GAME.nameYou=entry.nameYou;GAME.nameOpp='Computer'; // opponent name is locked
   GAME.sideHuman=entry.sideHuman;GAME.sideAI=entry.sideAI;
-  refreshIdentity();hideOverlay();showReplay(0);
+  refreshIdentity();hideOverlay();
+  var first=keyMoments()[0];
+  showReplay(first?first.recordIndex:0,!!first);
 }
 
 /* Cloud entries first (newest first), then session entries not yet saved.
