@@ -3162,6 +3162,8 @@ function migrateAnonGames(docs){
 
 /* ---------------- sign-in flow ---------------- */
 function onSignedIn(user){
+  if(!user||user.isAnonymous) return;
+  if(state.ready&&state.uid===user.uid) return; // already in (observer + redirect both fire)
   state.uid=user.uid;
   state.ready=true;
   hideLoginGate();
@@ -3200,32 +3202,41 @@ function boot(){
       firebase.initializeApp(FB_CONFIG);
       state.auth=firebase.auth();
       state.db=firebase.firestore();
-      // 1. completing a Google redirect?
-      return state.auth.getRedirectResult().then(function(result){
-        if(result&&result.user){onSignedIn(result.user);return 'done';}
-        // 2. already signed in (persisted session)?
-        var u=state.auth.currentUser;
-        if(u&&!u.isAnonymous){onSignedIn(u);return 'done';}
-        // 3. need login: sign in anonymously to find migratable games, then gate
-        var anonSignIn=u&&u.isAnonymous
-          ? Promise.resolve(u)
-          : state.auth.signInAnonymously().then(function(cred){return cred.user;});
-        return anonSignIn.then(function(anonUser){
-          return readGameDocs(anonUser.uid).then(function(docs){
-            state.pendingMigration=docs;
-            showLoginGate();
-            return 'gated';
-          },function(){
-            state.pendingMigration=[];
-            showLoginGate();
-            return 'gated';
-          });
+      // Primary sign-in detector: fires on redirect completions, restored
+      // sessions, and cross-tab sign-ins even when getRedirectResult is empty.
+      try{
+        state.auth.onAuthStateChanged(function(u){
+          if(u&&!u.isAnonymous) onSignedIn(u);
         });
+      }catch(e){}
+      // Show the gate promptly unless a session is already restoring.
+      setTimeout(function(){ if(!state.ready) showLoginGate(); },600);
+      // Completes a Google redirect initiated by this page; surfaces failures.
+      state.auth.getRedirectResult().then(function(result){
+        if(result&&result.user){ onSignedIn(result.user); return; }
+        // No redirect result: once the observer has had a chance to report a
+        // restored session, look for migratable pre-login games. Best effort:
+        // the anonymous provider may be disabled, in which case this skips.
+        setTimeout(function(){
+          if(state.ready) return;
+          var u=null; try{ u=state.auth.currentUser; }catch(e){}
+          if(u&&!u.isAnonymous){ onSignedIn(u); return; }
+          state.auth.signInAnonymously().then(function(cred){
+            return readGameDocs(cred.user.uid);
+          }).then(function(docs){
+            state.pendingMigration=docs;
+          }).catch(function(){
+            state.pendingMigration=[];
+          });
+        },1500);
+      },function(err){
+        showLoginGate(authErrorMessage(err));
       });
     })
-    .then(null,function(err){
-      // getRedirectResult failures (provider not enabled, network, etc.)
-      showLoginGate(authErrorMessage(err));
+    .then(null,function(){
+      // SDK scripts failed to load (offline etc.)
+      try{ showLoginGate('Could not load sign-in. Check your connection, then reload the page.'); }
+      catch(e){ warnOnce('auth unavailable'); }
     });
 }
 
