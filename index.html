@@ -392,32 +392,52 @@ svg text{pointer-events:none;}
 @media (min-width:1000px) and (min-height:650px){body.reviewing #side{flex-basis:188px}.reviewNavLabel{display:none}.reviewActions .pbtn{font-size:11.5px}}
 @media (max-aspect-ratio:1/1){body.reviewing #side{display:block;width:calc(100% - 12px);height:auto;min-height:190px;padding:7px 10px}.overlay.reviewMode{height:auto}.reviewHud{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto auto auto;gap:6px 10px}.reviewHudTop{grid-column:1;grid-row:1}.reviewActions{grid-column:1;grid-row:2;grid-template-columns:1fr 1fr}.reviewMetrics{grid-column:2;grid-row:1}.reviewNav{grid-column:2;grid-row:2}.reviewTimeline{grid-column:1/-1;grid-row:3;margin-top:0}.reviewStep span{white-space:nowrap}.reviewActions .pbtn{padding:8px 4px}.reviewNav .pbtn{height:34px;padding:4px}}
 @media (max-width:600px){.analysisCard{padding:20px 18px}.replayControls{grid-template-columns:1fr 1fr}.replayControls span{grid-column:1/-1;grid-row:1}.analysisReadout{font-size:12.5px}.qualityGrid{grid-template-columns:minmax(0,1fr) 74px 74px}.outcomeCard{padding:18px}.resultTitle{font-size:19px}}
-/* Review mode: a disciplined control stack on the right, with the timeline
-   given its own full board-width touch target below the playing surface. */
-.reviewHud{position:relative;padding:2px;gap:12px;overflow:visible;}
-.reviewHudTop{display:block;padding-right:42px;}
-.reviewDone{position:absolute;right:2px;top:2px;}
-.reviewMoveInfo{display:flex;align-items:center;justify-content:space-between;gap:9px;min-height:44px;}
-.reviewActor{display:inline-block;margin-bottom:5px;padding:3px 7px;border-radius:5px;font-size:9px;font-weight:900;line-height:1;letter-spacing:.1em;color:#fff;}
+/* Review mode: calm, roomy controls on the right. Secondary analysis stays
+   one tap away instead of competing with playback and navigation. */
+body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
+.reviewHud{position:relative;padding:0;gap:18px;overflow:visible;}
+.reviewHudTop{display:block;padding:0 50px 17px 0;border-bottom:1px solid rgba(255,231,194,.16);}
+.reviewDone{
+  position:absolute;right:0;top:0;width:44px;height:44px;margin:0;padding:0;
+  border-color:rgba(255,231,194,.22);border-radius:50%;background:rgba(25,16,10,.52);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);font-size:25px;font-weight:500;letter-spacing:0;
+}
+.reviewMoveInfo{display:flex;flex-direction:column;align-items:flex-start;gap:12px;min-height:70px;}
+.reviewActor{display:inline-block;margin-bottom:7px;padding:5px 8px;border-radius:5px;font-size:10px;font-weight:900;line-height:1;letter-spacing:.1em;color:#fff;}
 .reviewActor.player{background:#9f2c20;box-shadow:inset 0 1px 0 rgba(255,255,255,.18);}
 .reviewActor.computer{background:#285e88;box-shadow:inset 0 1px 0 rgba(255,255,255,.16);}
 .reviewActor.opening{background:#604a34;color:#eadcc3;}
-.reviewStep b{font-size:14px;line-height:1.25;}
-.reviewStep span{font-size:11px;margin-top:4px;white-space:normal;}
-.reviewDiceSet{display:flex;gap:5px;flex:none;align-items:center;}
-.reviewDie{width:31px;height:31px;padding:5px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;border-radius:7px;background:linear-gradient(180deg,#fff,#e9e0cc);border:1px solid #8a8272;box-shadow:0 2px 4px rgba(0,0,0,.4);}
+.reviewStep b{font-size:16px;line-height:1.28;}
+.reviewStep span{font-size:12px;line-height:1.4;margin-top:5px;white-space:normal;}
+.reviewDiceSet{display:flex;gap:7px;flex:none;align-items:center;min-height:34px;}
+.reviewDie{width:34px;height:34px;padding:5px;display:grid;grid-template-columns:repeat(3,1fr);grid-template-rows:repeat(3,1fr);gap:2px;border-radius:7px;background:linear-gradient(180deg,#fff,#e9e0cc);border:1px solid #8a8272;box-shadow:0 2px 4px rgba(0,0,0,.4);}
 .reviewDie i{width:5px;height:5px;align-self:center;justify-self:center;border-radius:50%;background:#2b2418;opacity:0;}
 .reviewDie i.on{opacity:1;}
 .reviewDiceEmpty{color:#a99576;font-size:10px;font-weight:800;letter-spacing:.08em;white-space:nowrap;}
-.reviewActions{grid-template-columns:1fr 1fr;gap:7px;padding-top:10px;border-top:1px solid rgba(255,220,170,.14);}
-.reviewActions .pbtn{min-height:42px;padding:8px 4px;font-size:10.5px;line-height:1.15;}
-.reviewMetrics{gap:6px;padding-top:10px;border-top:1px solid rgba(255,220,170,.14);}
-.reviewMetric{padding:8px 3px;font-size:8px;letter-spacing:.045em;}
-.reviewMetric b{font-size:13px;margin-top:3px;}
-.reviewNavBlock{padding-top:10px;border-top:1px solid rgba(255,220,170,.14);}
-.reviewCounter{margin-bottom:6px;font-size:11.5px;font-weight:700;}
-.reviewNav{gap:6px;}
-.reviewNav .pbtn{height:42px;padding:5px 2px;}
+.reviewActions{grid-template-columns:1fr;gap:10px;padding:0;border:0;}
+.reviewActions .pbtn{min-height:52px;padding:10px 8px;font-size:12px;line-height:1.2;}
+.reviewAnalysis{margin:0;border-top:1px solid rgba(255,231,194,.16);border-bottom:1px solid rgba(255,231,194,.16);}
+.reviewAnalysis summary{
+  min-height:50px;display:flex;align-items:center;justify-content:space-between;gap:10px;
+  cursor:pointer;list-style:none;color:#f3dfc2;font-size:12px;font-weight:850;letter-spacing:.06em;touch-action:manipulation;
+}
+.reviewAnalysis summary::-webkit-details-marker{display:none;}
+.reviewAnalysis summary::after{content:'›';font-size:24px;font-weight:400;line-height:1;color:#c9b18e;transform:rotate(90deg);transition:transform .16s ease;}
+.reviewAnalysis[open] summary::after{transform:rotate(-90deg);}
+.reviewAnalysisSummary{color:#a99576;font-size:10px;font-weight:650;letter-spacing:0;text-align:right;}
+.reviewMetrics{display:grid;grid-template-columns:1fr;gap:0;padding:0 0 10px;border:0;}
+.reviewMetric{display:flex;align-items:center;justify-content:space-between;min-height:43px;padding:7px 10px;border-radius:0;background:rgba(23,16,11,.54);color:#cbb99c;font-size:10px;letter-spacing:.055em;text-align:left;}
+.reviewMetric+.reviewMetric{border-top:1px solid rgba(255,231,194,.08);}
+.reviewMetric b{display:block;margin:0;color:#fff4df;font-size:15px;font-variant-numeric:tabular-nums;}
+.reviewNavBlock{margin-top:auto;padding-top:0;border:0;}
+.reviewCounter{margin-bottom:10px;color:#f1dec1;font-size:13px;font-weight:750;}
+.reviewNav{display:grid;grid-template-columns:1fr 1fr;grid-template-areas:'prev next' 'prevkey nextkey';gap:9px;}
+.reviewNav .pbtn{height:50px;padding:7px 5px;}
+.reviewNav #rPrev{grid-area:prev;}
+.reviewNav #rNext{grid-area:next;}
+.reviewNav #rPrevKey{grid-area:prevkey;}
+.reviewNav #rNextKey{grid-area:nextkey;}
+.reviewNav .keyJump{font-size:10.5px;line-height:1.15;padding:6px;}
 #reviewTimelineDock .reviewTimeline{height:100%;margin:0;padding:0;}
 #reviewTimelineDock .reviewTimelineMeta{font-size:10.5px;font-weight:750;letter-spacing:.045em;}
 #reviewTimelineDock .timelineWrap{height:45px;margin-top:3px;}
@@ -428,19 +448,32 @@ svg text{pointer-events:none;}
 #reviewTimelineDock .reviewRange::-moz-range-thumb{width:20px;height:20px;border-width:3px;}
 #reviewTimelineDock .timelineTicks{left:12px;right:12px;top:17px;height:7px;}
 #reviewTimelineDock .timelineTicks i{width:10px;height:10px;margin:-2px 0 0 -5px;border:2px solid #4c160f;box-shadow:none;}
+@media (orientation:landscape) and (max-height:650px){
+  body.reviewing #side{flex-basis:260px;padding:12px 13px;}
+  .reviewHud{gap:11px;}
+  .reviewHudTop{padding-bottom:10px;}
+  .reviewMoveInfo{gap:8px;}
+  .reviewDie{width:30px;height:30px;padding:4px;}
+  .reviewActions{grid-template-columns:1fr 1fr;gap:8px;}
+  .reviewActions .pbtn,.reviewNav .pbtn{min-height:44px;height:44px;}
+  .reviewAnalysis summary{min-height:44px;}
+  .reviewMetric{min-height:38px;}
+  .reviewCounter{margin-bottom:6px;}
+}
 @media (max-aspect-ratio:1/1){
   #playArea{flex:1 1 0;min-height:0;}
   body.reviewing #side{width:calc(100% - 12px);height:auto;min-height:164px;padding:8px 10px;}
   body.reviewing #reviewTimelineDock{flex-basis:76px;margin:0 6px 5px;padding:8px 14px 4px;}
-  .reviewHud{grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);grid-template-rows:auto auto;gap:7px 10px;}
-  .reviewHudTop{grid-column:1;grid-row:1;padding-right:36px;}
-  .reviewActions{grid-column:1;grid-row:2;padding-top:7px;}
-  .reviewMetrics{grid-column:2;grid-row:1;padding-top:0;border-top:0;}
-  .reviewNavBlock{grid-column:2;grid-row:2;padding-top:7px;}
-  .reviewMoveInfo{min-height:38px;}
-  .reviewDie{width:28px;height:28px;padding:4px;}
-  .reviewActions .pbtn,.reviewNav .pbtn{min-height:34px;height:34px;padding:4px 2px;}
-  .reviewCounter{margin-bottom:3px;}
+  .reviewHud{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto auto;gap:7px 10px;}
+  .reviewHudTop{grid-column:1;grid-row:1;padding:0 38px 7px 0;}
+  .reviewMoveInfo{gap:7px;min-height:38px;}
+  .reviewDiceSet{gap:4px;}
+  .reviewDie{width:27px;height:27px;padding:4px;}
+  .reviewActions{grid-column:1;grid-row:2;grid-template-columns:1fr 1fr;gap:6px;}
+  .reviewActions .pbtn,.reviewNav .pbtn{min-height:38px;height:38px;padding:4px 2px;}
+  .reviewAnalysis{display:none;}
+  .reviewNavBlock{grid-column:2;grid-row:1/3;margin-top:0;}
+  .reviewCounter{margin-bottom:4px;}
 }
 </style>
 <link rel="manifest" href="manifest.json"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="Backgammon"><link rel="apple-touch-icon" href="apple-touch-icon.png"></head>
@@ -1195,14 +1228,14 @@ function badge(key,x,y,text){
   el.lastChild.textContent=text;
 }
 function layout(st,animate,keepVisible){
-  const loc={},visible=new Set(),keep=keepVisible||new Set();
+  const loc={},visible=new Set(),keep=keepVisible||new Set(),renderOrder=[];
   if(!animate)gCK.classList.add('noMotion');
   for(let i=0;i<24;i++){
     const ids=st.points[i];
     const {row}=idxSlot(i),x=ptX(i);
     const n=Math.min(ids.length,8);
     ids.forEach((id,k)=>{
-      if(k<n){const el=CK[id];visible.add(id);el.style.display='';setPos(el,x,stackY(i,k));}
+      if(k<n){const el=CK[id];visible.add(id);renderOrder.push(el);el.style.display='';setPos(el,x,stackY(i,k));}
       loc[id]={kind:'point',idx:i,k};
     });
     badge('p'+i, x+30, row==='b'?GV.MID+46:GV.MID-46, ids.length>8?String(ids.length):null);
@@ -1211,12 +1244,17 @@ function layout(st,animate,keepVisible){
     const bar=st.bar[c];
     const n=Math.min(bar.length,GV.BARVISIBLE);
     bar.forEach((id,k)=>{
-      if(k<n){const el=CK[id];visible.add(id);el.style.display='';setBarPos(el,c,k);}
+      if(k<n){const el=CK[id];visible.add(id);renderOrder.push(el);el.style.display='';setBarPos(el,c,k);}
       loc[id]={kind:'bar',c,k};
     });
     badge('bar'+c,GV.BARX,barY(c,GV.BARVISIBLE),bar.length>GV.BARVISIBLE?('+'+(bar.length-GV.BARVISIBLE)):null);
   }
   for(const id in CK){if(!visible.has(id)&&!keep.has(id))CK[id].style.display='none';}
+  // SVG paints in DOM order. Re-establish bottom-to-top order on every layout
+  // so moved and replayed checkers cannot leave a lower disc painted over the
+  // one above it. This keeps every stack on one straight centerline in both
+  // live play and review, independent of checker id or move history.
+  renderOrder.forEach(el=>gCK.appendChild(el));
   CKLOC=loc;
   if(!animate){void gCK.getBoundingClientRect();gCK.classList.remove('noMotion');}
 }
@@ -2497,7 +2535,8 @@ function keyMoments(){
 function eqText(n){return(n>=0?'+':'')+n.toFixed(3);}
 function reviewDiceHtml(values){
   if(!values||!values.length)return'<span class="reviewDiceEmpty">NO ROLL</span>';
-  const cast=values.length===4&&values.every(v=>v===values[0])?values.slice(0,2):values.slice(0,2);
+  const isDouble=values.length>=2&&values.every(v=>v===values[0]);
+  const cast=isDouble?Array(4).fill(values[0]):values.slice(0,2);
   const active={1:[4],2:[0,8],3:[0,4,8],4:[0,2,6,8],5:[0,2,4,6,8],6:[0,2,3,5,6,8]};
   return cast.map(v=>`<span class="reviewDie" role="img" aria-label="Die ${v}">${Array.from({length:9},(_,i)=>`<i class="${active[v].includes(i)?'on':''}"></i>`).join('')}</span>`).join('');
 }
@@ -2623,7 +2662,7 @@ async function showReplay(index){
   const ticks=keyIndexes.map(n=>`<i style="left:${max?n/max*100:0}%"></i>`).join('');
   const progress=max?i/max*100:0;
   const diceMarkup=reviewDiceHtml(row?row.dice:null);
-  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div><div class="reviewDiceSet" aria-label="Dice cast">${diceMarkup}</div></div><button class="pbtn reviewDone" id="rDone" aria-label="Finish review" title="Done">×</button></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${row&&row.moves.length?'':'disabled'}>Your move</button><button class="pbtn recommended" id="rBest" ${row&&row.analysis&&row.analysis.bestSeq.length?'':'disabled'}>Recommended move</button></div><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${row?cost.toFixed(3):'—'}</b></div></div><div class="reviewNavBlock"><div class="reviewCounter">Move ${i} of ${max}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div>`,'reviewHud');
+  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div><div class="reviewDiceSet" aria-label="Dice cast">${diceMarkup}</div></div><button class="pbtn reviewDone" id="rDone" aria-label="Finish review" title="Done">×</button></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${row&&row.moves.length?'':'disabled'}>Your move</button><button class="pbtn recommended" id="rBest" ${row&&row.analysis&&row.analysis.bestSeq.length?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis"><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance · equity · cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${row?cost.toFixed(3):'—'}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter">Move ${i} of ${max}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div>`,'reviewHud');
   const dock=$('reviewTimelineDock');
   dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span>${moments.length} KEY ${moments.length===1?'MOMENT':'MOMENTS'}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};$('rNext').onclick=()=>{Snd.pick();animateReplayNavigation(i+1);};
