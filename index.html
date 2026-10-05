@@ -92,7 +92,7 @@ html:fullscreen #app,html:-webkit-full-screen #app,#app:fullscreen,#app:-webkit-
 }
 #btnRoll[hidden]{display:none;}
 #confetti{
-  position:absolute; inset:0; z-index:45; pointer-events:none; overflow:hidden;
+  position:fixed; inset:0; z-index:45; pointer-events:none; overflow:hidden;
 }
 #confetti[hidden]{display:none;}
 .confettiPiece{
@@ -2497,14 +2497,14 @@ function celebrateVictory(){
     piece.style.setProperty('--spin-a',(spin*.30).toFixed(0)+'deg');
     piece.style.setProperty('--spin-b',(spin*.66).toFixed(0)+'deg');
     piece.style.setProperty('--spin-c',spin.toFixed(0)+'deg');
-    // Double the original 2.5–3.2 second gentle fall, with a staggered start
-    // rather than a center burst.
-    const duration=(2.5+Math.random()*.7)*2;
+    // 1.5x the original 2.5–3.2 second gentle fall (0.75x the previous double),
+    // with a staggered start rather than a center burst.
+    const duration=(2.5+Math.random()*.7)*1.5;
     piece.style.setProperty('--dur',duration+'s');
-    piece.style.setProperty('--delay',(Math.random()*1.15)+'s');
+    piece.style.setProperty('--delay',(Math.random()*.86)+'s');
     box.appendChild(piece);
   }
-  const durationMs=7800;
+  const durationMs=5850;
   celebrateVictory._h=setTimeout(()=>{box.hidden=true;box.innerHTML='';},durationMs);
   return durationMs;
 }
