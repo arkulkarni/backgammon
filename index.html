@@ -1188,9 +1188,11 @@ async function hybPly3(state,mySeq,me,player,deadline){
     }
     let bestOpp=Infinity;
     for(const rq of replies1){
+      if(performance.now()>=deadline)return null;
       const st2=applySeq(st1,rq,player);
       let myVal=0;
       for(const roll2 of HYB_ROLLS){
+        if(performance.now()>=deadline)return null;
         const replies2=legalSequences(st2,me,roll2.dice);
         let best=-Infinity;
         for(const rq2 of replies2){
