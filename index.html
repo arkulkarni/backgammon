@@ -1114,61 +1114,114 @@ function aiPick(state,dice,me,difficulty){
   const temp=calibratedTemperature(ranked.map(c=>c.error),tier.targetError);
   return sampleSoftmax(ranked,temp).seq;
 }
-/* ================= 2-ply lookahead for Hard ================= */
-// Hard looks one extra half-move ahead: for each of its top candidate moves it
-// simulates every distinct dice roll the player could throw next (21, with
-// exact probabilities), takes the player's best reply to each roll, and picks
-// the move with the best expected equity against those replies. The player's
-// replies are assumed greedy-best by the same neural net, which is exactly
-// the tactic the 1-ply engine was blind to (leaving blots it could not see
-// being hit). Runs on a time budget and falls back to the 1-ply best.
-const PLY2={
-  candidates:8,   // top-N 1-ply moves searched deeper
-  timeMs:2800,    // search budget; best-so-far is kept on expiry
-  maxReplies:12,  // replies per roll scored by the net (rest prefiltered below)
+/* ================= deep lookahead for Hard ================= */
+// Hard thinks deeper than the 1-ply engine. A broad 2-ply first ranks the
+// candidate moves; then a selective 3-ply verifies the most promising ones by
+// looking two full moves ahead (my move, opponent's reply, my reply). That
+// extra reply is where real tactical strength comes from -- it sees the
+// combinations a 2-ply search is blind to. Runs on a time budget with
+// best-so-far kept on expiry, and falls back to the 1-ply pick if the search
+// fails, so the game can never stall.
+const DEEP={
+  timeMs:6000,   // search budget; best-so-far is kept on expiry
+  cands2ply:12,  // candidates ranked by the broad 2-ply
+  cands3ply:2,   // top candidates verified by the selective 3-ply
+  maxReplies:8,  // replies considered per roll at the deep levels
 };
-const PLY2_ROLLS=(()=>{
+const DEEP_ROLLS=(()=>{ // 21 distinct rolls with exact probabilities
   const r=[];
-  for(let a=1;a<=6;a++)for(let b=1;b<=a;b++)r.push({a,b,p:a===b?1/36:1/18});
+  for(let a=1;a<=6;a++)for(let b=1;b<=a;b++)r.push({dice:a===b?[a,a,a,a]:[a,b],p:a===b?1/36:1/18});
   return r;
 })();
-function ply2ReplyDice(roll){return roll.a===roll.b?[roll.a,roll.a,roll.a,roll.a]:[roll.a,roll.b];}
-function ply2PrefilterReplies(st,replies,player){
-  // Fast heuristic keeps only the plausible replies for net scoring, so the
-  // search stays inside its time budget in wide-open positions.
-  return replies.map(seq=>({seq,v:evaluate(applySeq(st,seq,player),player)}))
-    .sort((x,y)=>y.v-x.v).slice(0,PLY2.maxReplies).map(x=>x.seq);
+// Transposition table: identical positions arise often across rolls/replies.
+const evalCache=new Map();
+function boardKey(st){
+  let k='';
+  for(let i=0;i<24;i++){const p=st.points[i];k+=p.length?p[0][0]+p.length:'.';}
+  return k+'|'+st.bar.w.length+','+st.bar.b.length+'|'+st.off.w+','+st.off.b;
 }
-async function aiPickHardTwoPly(state,dice,me){
+function evalCached(st,perspective){
+  const k=boardKey(st)+perspective;
+  let v=evalCache.get(k);
+  if(v===undefined){v=positionEval(st,perspective).equity;evalCache.set(k,v);}
+  return v;
+}
+// 2-ply value of the position after my move: expected equity against the
+// opponent's best reply to each of their 21 rolls.
+function deepPly2(st1,me,player,deadline){
+  let val=0;
+  for(const roll of DEEP_ROLLS){
+    if(performance.now()>=deadline)return null;
+    const replies=legalSequences(st1,player,roll.dice);
+    let worst=Infinity;
+    for(const rq of replies){
+      const v=evalCached(applySeq(st1,rq,player),me);
+      if(v<worst)worst=v;
+    }
+    val+=roll.p*worst;
+  }
+  return val;
+}
+// 3-ply value: for each opponent roll, the opponent picks the reply that
+// minimizes my equity AFTER my best response to it (my 21 rolls averaged).
+async function deepPly3(state,mySeq,me,player,deadline){
+  const st1=applySeq(state,mySeq,me);
+  let val=0;
+  for(const roll1 of DEEP_ROLLS){
+    if(performance.now()>=deadline)return null;
+    let replies1=legalSequences(st1,player,roll1.dice);
+    // Prune to the most dangerous replies by immediate net equity, so the
+    // expensive inner loop below only runs on replies that matter.
+    if(replies1.length>DEEP.maxReplies){
+      replies1=replies1.map(rq=>({rq,v:evalCached(applySeq(st1,rq,player),me)}))
+        .sort((a,b)=>a.v-b.v).slice(0,DEEP.maxReplies).map(x=>x.rq);
+    }
+    let bestOpp=Infinity;
+    for(const rq of replies1){
+      const st2=applySeq(st1,rq,player);
+      let myVal=0;
+      for(const roll2 of DEEP_ROLLS){
+        const replies2=legalSequences(st2,me,roll2.dice);
+        let best=-Infinity;
+        for(const rq2 of replies2){
+          const v=evalCached(applySeq(st2,rq2,me),me);
+          if(v>best)best=v;
+        }
+        myVal+=roll2.p*best;
+      }
+      if(myVal<bestOpp)bestOpp=myVal;
+    }
+    val+=roll1.p*bestOpp;
+    await new Promise(r=>setTimeout(r,0)); // keep the page responsive
+  }
+  return val;
+}
+async function aiPickHardDeep(state,dice,me){
   if(!(window.GNUbgEvaluator&&GNUbgEvaluator.ready))throw new Error('GNU evaluator not ready');
+  evalCache.clear();
   const seqs=legalSequences(state,me,dice);
   if(seqs.length<=1)return seqs[0]||[];
-  const ranked=seqs.map(seq=>{
-    const st=applySeq(state,seq,me);
-    return{seq,equity:positionEval(st,me).equity};
-  }).sort((a,b)=>b.equity-a.equity);
-  const player=other(me),deadline=performance.now()+PLY2.timeMs;
-  // NOTE: bestVal starts at -Infinity so the first candidate's 2-ply value
-  // seeds the comparison; 2-ply values and 1-ply equities share a scale but
-  // are not interchangeable baselines (replies only ever reduce equity).
-  let bestSeq=ranked[0].seq,bestVal=-Infinity;
-  const limit=Math.min(PLY2.candidates,ranked.length);
-  for(let i=0;i<limit;i++){
-    const st=applySeq(state,ranked[i].seq,me);
-    let val=0;
-    for(const roll of PLY2_ROLLS){
-      let replies=legalSequences(st,player,ply2ReplyDice(roll));
-      if(replies.length>PLY2.maxReplies)replies=ply2PrefilterReplies(st,replies,player);
-      let worst=Infinity; // the player's best reply is our worst outcome
-      for(const rq of replies){
-        const v=positionEval(applySeq(st,rq,player),me).equity;
-        if(v<worst)worst=v;
-      }
-      val+=roll.p*worst;
-    }
-    if(val>bestVal){bestVal=val;bestSeq=ranked[i].seq;}
-    if(performance.now()>=deadline)break;
-    await new Promise(r=>setTimeout(r,0)); // keep the page responsive while thinking
+  const ranked=seqs.map(seq=>({seq,equity:evalCached(applySeq(state,seq,me),me)}))
+    .sort((a,b)=>b.equity-a.equity);
+  const player=other(me),deadline=performance.now()+DEEP.timeMs;
+  // Phase 1: broad 2-ply ranking.
+  const cands=ranked.slice(0,Math.min(DEEP.cands2ply,ranked.length));
+  for(const c of cands){
+    c.v2=deepPly2(applySeq(state,c.seq,me),me,player,deadline);
+    if(c.v2===null)break;
+    await new Promise(r=>setTimeout(r,0));
+  }
+  const done2=cands.filter(c=>c.v2!==null&&c.v2!==undefined)
+    .sort((a,b)=>b.v2-a.v2);
+  if(!done2.length)return ranked[0].seq;
+  let bestSeq=done2[0].seq;
+  // Phase 2: selective 3-ply on the most promising candidates.
+  let bestVal=-Infinity;
+  const deepN=Math.min(DEEP.cands3ply,done2.length);
+  for(let i=0;i<deepN;i++){
+    const v=await deepPly3(state,done2[i].seq,me,player,deadline);
+    if(v===null)break;
+    if(v>bestVal){bestVal=v;bestSeq=done2[i].seq;}
   }
   return bestSeq;
 }
@@ -2188,7 +2241,7 @@ async function aiTurn(openingDice){
     // pick if anything goes wrong so the game never stalls.
     const tEl=$('toast');clearTimeout(toast._h);
     tEl.textContent='Hard is thinking…';tEl.classList.add('show');
-    try{seq=await aiPickHardTwoPly(GAME.state,dice,GAME.sideAI);}
+    try{seq=await aiPickHardDeep(GAME.state,dice,GAME.sideAI);}
     catch(e){seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);}
     clearTimeout(toast._h);tEl.classList.remove('show');
   }else{
