@@ -202,11 +202,11 @@ button.offBadge.ready:active{transform:scale(.95);}
 /* ---------- thinking indicator (hard, foreground) ---------- */
 #thinkIndicator{position:absolute;left:50%;top:5%;transform:translateX(-50%);z-index:6;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:7px;}
 #thinkIndicator[hidden]{display:none;}
-#thinkIndicator .thinkGlyph{width:34px;height:34px;animation:thinkFloat 3s ease-in-out infinite;}
-#thinkIndicator .thinkGlyph svg{width:100%;height:100%;display:block;animation:thinkGlow 2.2s ease-in-out infinite;}
-@keyframes thinkFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-7px);}}
-@keyframes thinkGlow{0%,100%{filter:drop-shadow(0 0 3px rgba(255,209,46,.55));opacity:.85;}50%{filter:drop-shadow(0 0 10px rgba(255,209,46,.95));opacity:1;}}
-#thinkIndicator .thinkLabel{font-variant:small-caps;letter-spacing:.38em;text-indent:.38em;font-size:13px;color:#f3d9a4;text-shadow:0 1px 8px rgba(0,0,0,.65);white-space:nowrap;animation:thinkLabelBreathe 2.2s ease-in-out infinite;}
+#thinkIndicator .thinkGlyph{width:38px;height:38px;animation:thinkFloat 1.6s ease-in-out infinite;}
+#thinkIndicator .thinkGlyph svg{width:100%;height:100%;display:block;transform-box:fill-box;transform-origin:center;animation:thinkTwinkle 1.6s ease-in-out infinite;}
+@keyframes thinkFloat{0%,100%{transform:translateY(3px);}50%{transform:translateY(-13px);}}
+@keyframes thinkTwinkle{0%,100%{transform:scale(.85) rotate(-10deg);filter:drop-shadow(0 0 4px rgba(255,209,46,.55));opacity:.78;}50%{transform:scale(1.15) rotate(10deg);filter:drop-shadow(0 0 16px rgba(255,216,90,1));opacity:1;}}
+#thinkIndicator .thinkLabel{font-variant:small-caps;letter-spacing:.16em;text-indent:.16em;font-size:13px;color:#f3d9a4;text-shadow:0 1px 8px rgba(0,0,0,.65);white-space:nowrap;animation:thinkLabelBreathe 2.2s ease-in-out infinite;}
 @keyframes thinkLabelBreathe{0%,100%{opacity:.75;}50%{opacity:1;}}
 #thinkIndicator .thinkLabel .eldot{animation:thinkEl 1.8s infinite;}
 #thinkIndicator .thinkLabel .eldot:nth-child(2){animation-delay:.3s;}
