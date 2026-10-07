@@ -123,9 +123,10 @@ html:fullscreen #app,html:-webkit-full-screen #app,#app:fullscreen,#app:-webkit-
   border:1px solid rgba(70,38,12,.8);
 }
 .pblk{width:100%; text-align:center; padding:6px 4px;}
-#blkHuman{align-self:start;}
-#side .mid{align-self:center;}
-#blkOpp{align-self:end;}
+/* Your panel sits at the bottom (your side of the board), the computer's at top. */
+#blkHuman{grid-row:3;align-self:end;}
+#side .mid{grid-row:2;align-self:center;}
+#blkOpp{grid-row:1;align-self:start;}
 .offBadge{
   width:64px; height:64px; border-radius:50%; margin:2px auto 8px; padding:0;
   display:flex; align-items:center; justify-content:center;
@@ -392,10 +393,10 @@ svg text{pointer-events:none;}
   #side{display:flex; flex:0 0 auto; flex-direction:row; width:calc(100% - 12px); height:auto; min-height:104px;
     margin:0 auto 10px; padding:8px 12px; align-self:center;}
   #side .pblk{width:auto; flex:1; min-width:0; display:flex; align-items:center; gap:6px; justify-content:center;}
-  #side .mid{flex:0 0 96px; flex-direction:column;}
   #blkHuman .pinfo, #blkOpp .pinfo{min-width:0; flex:1;}
-  #blkHuman .pinfo{text-align:left;}
-  #blkOpp{flex-direction:row-reverse;} #blkOpp .pinfo{text-align:right;}
+  #blkOpp{order:1;} #blkOpp .pinfo{text-align:left;}
+  #side .mid{flex:0 0 96px; flex-direction:column; order:2;}
+  #blkHuman{order:3;flex-direction:row-reverse;} #blkHuman .pinfo{text-align:right;}
   .pname{font-size:12.5px; margin:1px 0 3px;}
   .pline{font-size:11.5px; line-height:1.35; white-space:nowrap;}
   .offBadge{width:44px; height:44px; font-size:18px; margin:0; flex:0 0 44px;}
