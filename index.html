@@ -1300,7 +1300,13 @@ function setRollVisible(visible){
 // 1.5× the previous playback speed, for player, computer, hit-to-bar and dice motion.
 const MOTION={human:1200,computer:1600,barHuman:1200,barComputer:1600,gap:240,settle:200,diceRollOff:1000,diceTurn:1000,doubleReveal:360};
 function slotX(s){return s<6?76+92*s:664+92*(s-6);}
-function idxSlot(idx){return idx<12?{slot:11-idx,row:'b'}:{slot:idx-12,row:'t'};}
+function idxSlot(idx){const d=dispFlip()?23-idx:idx;return d<12?{slot:11-d,row:'b'}:{slot:d-12,row:'t'};}
+// Display flip: when you play black the whole board rotates 180° so your
+// checkers sit at the bottom, like sitting at a real board. Game logic always
+// uses unflipped indices; only rendering (via idxSlot) is flipped.
+function dispFlip(){return GAME.sideHuman==='b';}
+function triIdx(slot,row){const base=row==='b'?11-slot:12+slot;return dispFlip()?23-base:base;}
+function ptLabel(idx){return dispFlip()?24-idx:idx+1;}
 function ptX(idx){return slotX(idxSlot(idx).slot);}
 function stackY(idx,depth){return idxSlot(idx).row==='b'?GV.Y1-40-GV.PITCH*depth:GV.Y0+40+GV.PITCH*depth;}
 function triPts(slot,row){
@@ -1312,7 +1318,7 @@ function triPts(slot,row){
   if(slot===6)left=barR;
   return row==='t'?`${left},${GV.Y0} ${right},${GV.Y0} ${x},${GV.MID-40}`:`${left},${GV.Y1} ${right},${GV.Y1} ${x},${GV.MID+40}`;
 }
-function barY(c,depth){return c==='w'?GV.MID+24+GV.BARPITCH*depth:GV.MID-24-GV.BARPITCH*depth;}
+function barY(c,depth){return c===GAME.sideHuman?GV.MID+24+GV.BARPITCH*depth:GV.MID-24-GV.BARPITCH*depth;}
 function setBarPos(el,c,depth){el.style.transform=`translate(${GV.BARX}px,${barY(c,depth)}px) scale(${GV.BARSCALE})`;}
 const CK={}; const CKCLIP={}; let CKLOC={}; const BADGE={};
 const FLY_OFF_IDS=new Set();
@@ -1339,11 +1345,18 @@ function buildBoard(){
   for(let s=6;s<12;s++){idxs.push({slot:s,row:'t',idx:18+(s-6)});idxs.push({slot:s,row:'b',idx:5-(s-6)});}
   for(const p of idxs){
     const poly=S('polygon',{points:triPts(p.slot,p.row),class:'tri '+(p.slot%2?'tri-b':'tri-a')});
-    poly.setAttribute('data-pt',p.idx);
+    poly.setAttribute('data-pt',triIdx(p.slot,p.row));
+    poly.setAttribute('data-slot',p.slot);poly.setAttribute('data-row',p.row);
     gTri.appendChild(poly);
   }
   const felt=S('rect',{x:GV.X0,y:GV.Y0,width:GV.X1-GV.X0,height:GV.Y1-GV.Y0,rx:6,fill:'none',stroke:'#6e451f','stroke-width':2});
   gBase.appendChild(felt);
+}
+// The triangles are built once; their tap targets must follow the display flip.
+function relabelTriangles(){
+  gTri.querySelectorAll('polygon.tri').forEach(poly=>{
+    poly.setAttribute('data-pt',triIdx(+poly.getAttribute('data-slot'),poly.getAttribute('data-row')));
+  });
 }
 function buildCheckers(){
   for(const c of ['w','b']){
@@ -1737,7 +1750,7 @@ function markSelection(from,dests,st){
     if(d.to==='off')continue;
     const poly=S('polygon',{points:destPtPts(d.to),class:'destPoly'});
     poly.setAttribute('data-pt',d.to);poly.setAttribute('role','button');poly.setAttribute('tabindex','0');
-    poly.setAttribute('aria-label','Move to point '+(d.to+1)+' using '+(d.label||d.die));
+    poly.setAttribute('aria-label','Move to point '+ptLabel(d.to)+' using '+(d.label||d.die));
     gHL.appendChild(poly);
     const x=ptX(d.to);
     const y=idxSlot(d.to).row==='b'?452:248;
@@ -1754,7 +1767,7 @@ function markSelection(from,dests,st){
 function markPendingMoves(){ /* reserved */ }
 function reviewPosition(loc,st,color){
   if(loc==='bar')return{x:GV.BARX,y:barY(color,Math.max(0,Math.min(st.bar[color].length,GV.BARVISIBLE)-1))};
-  if(loc==='off')return{x:1142,y:color==='w'?610:90};
+  if(loc==='off')return{x:1142,y:color===GAME.sideHuman?610:90};
   const count=st.points[loc].length;
   return{x:ptX(loc),y:stackY(loc,Math.max(0,Math.min(count,8)-1))};
 }
@@ -1918,7 +1931,7 @@ function openArchivedGame(index){
   GAME.lastResult=JSON.parse(JSON.stringify(archived.lastResult));
   GAME.nameYou='You';GAME.nameOpp='Computer';
   GAME.sideHuman=archived.sideHuman;GAME.sideAI=archived.sideAI;
-  refreshIdentity();hideOverlay();
+  refreshIdentity();hideOverlay();relabelTriangles();
   const first=keyMoments()[0];
   showReplay(first?first.recordIndex:0,!!first);
 }
@@ -2129,7 +2142,7 @@ function newGame(){
   FLY_OFF_IDS.clear();
   GAME.remaining=[];GAME.snaps=[];GAME.history=[];GAME.turnHistoryStart=0;GAME.selected=null;GAME.destsNow=[];GAME.sourcesNow=[];
   GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;
-  clearDice();clearHL();layout(GAME.state);updatePanel();syncUI();
+  clearDice();clearHL();relabelTriangles();layout(GAME.state);updatePanel();syncUI();
   rolloff(tok);
 }
 async function rolloff(tok){
