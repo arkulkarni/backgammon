@@ -498,6 +498,12 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   .reviewCounter{margin-bottom:4px;}
 }
 </style>
+<link rel="manifest" href="manifest.json">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Backgammon">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 </head>
 <body>
 <div id="app">
@@ -1262,6 +1268,53 @@ async function aiPickHardHybrid(state,dice,me){
     }
   }
   return bestSeq;
+}
+/* ================= WASM gnubg engine (native-speed) ================= */
+// The real GNU Backgammon engine compiled to WebAssembly. hint() runs a full
+// 2-ply search in ~100ms (vs ~2s for the JS hybrid), so Hard is both faster
+// and stronger. Falls back to the JS engine if WASM is unavailable.
+function xgidChar(n,upper){return n<=0?'-':String.fromCharCode((upper?65:97)+n-1);}
+function toXGID(st,me,dice){
+  const opp=me==='w'?'b':'w';
+  let s=xgidChar(st.bar[opp].length,false); // char 0: opponent's bar
+  for(let q=1;q<=24;q++){ // chars 1-24: X's points 1..24 (ace point first)
+    const idx=me==='w'?q-1:24-q;
+    const pt=st.points[idx];
+    let nx=0,no=0;
+    for(const id of pt){if(id[0]===me)nx++;else no++;}
+    s+=nx>0?xgidChar(nx,true):no>0?xgidChar(no,false):'-';
+  }
+  s+=xgidChar(st.bar[me].length,true); // char 25: X's bar (must be uppercase)
+  const d=dice.length===4?`${dice[0]}${dice[0]}`:`${dice[0]}${dice[1]}`;
+  return `XGID=${s}:0:0:1:${d}:0:0:0:0:10`;
+}
+function parseWasmMove(moveStr,me){
+  const q2idx=q=>me==='w'?q-1:24-q;
+  return moveStr.trim().split(/\s+/).map(tok=>{
+    tok=tok.replace(/\*+$/,'');
+    const sl=tok.split('/');
+    const cv=v=>v==='25'?'bar':v==='0'?'off':q2idx(parseInt(v,10));
+    return [cv(sl[0]),cv(sl[1])];
+  });
+}
+function matchWasmSeq(st,me,dice,parsed){
+  const seqs=legalSequences(st,me,dice);
+  if(!seqs.length||!seqs[0].length)return[];
+  const key=ms=>ms.map(p=>p[0]+'>'+p[1]).sort().join(',');
+  const target=key(parsed);
+  for(const sq of seqs){
+    if(key(sq.map(m=>[m.from,m.to]))===target)return sq;
+  }
+  return null;
+}
+async function aiPickWasm(state,dice,me){
+  const core=await window.GNUBG;
+  if(!core)throw new Error('WASM gnubg not available');
+  const res=core.hint(toXGID(state,me,dice),1);
+  if(!res||res.action!=='play'||!res.data||!res.data.length)throw new Error('WASM no play');
+  const sq=matchWasmSeq(state,me,dice,parseWasmMove(res.data[0].move,me));
+  if(!sq)throw new Error('WASM move match failed');
+  return sq;
 }
 /* ================= renderer ================= */
 const svg=document.getElementById('board');
@@ -2296,17 +2349,24 @@ async function aiTurn(openingDice){
   if(tok!==GAME.token)return;
   let seq;
   if(GAME.difficulty==='hard'){
-    // Hybrid lookahead: fast pruned 2-ply, selective 3-ply in sharp spots.
-    // The sparkle-and-Thinking indicator shows while it works. A hard timeout
+    // WASM gnubg: real engine at native speed (~100ms 2-ply). Falls back to
+    // the JS hybrid, then 1-ply, if WASM is unavailable. A hard timeout
     // guarantees the turn never stalls, even if the search hangs.
     startThinkIndicator();
     try{
       seq=await Promise.race([
-        aiPickHardHybrid(GAME.state,dice,GAME.sideAI),
+        aiPickWasm(GAME.state,dice,GAME.sideAI),
         new Promise((_,rej)=>setTimeout(()=>rej(new Error('hard think timeout')),9000)),
       ]);
     }
-    catch(e){seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);}
+    catch(e){
+      try{
+        seq=await Promise.race([
+          aiPickHardHybrid(GAME.state,dice,GAME.sideAI),
+          new Promise((_,rej)=>setTimeout(()=>rej(new Error('hard think timeout')),9000)),
+        ]);
+      }catch(e2){seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);}
+    }
     stopThinkIndicator();
   }else{
     seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);
@@ -2992,7 +3052,17 @@ function init(){
 init();
 window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
 </script>
+<script type="module">
+  // Load the real GNU Backgammon engine (WebAssembly) for Hard play.
+  // window.GNUBG is a promise resolving to the engine, or null if it fails.
+  import {initGnubgCore} from './gnubg/gnubg-core.js';
+  window.GNUBG=(async()=>{
+    try{return await initGnubgCore();}
+    catch(e){console.warn('WASM gnubg failed to load, using JS engine',e);return null;}
+  })();
+</script>
 <script>
+/* firebase-sync.js inlined at deploy */
 /* Backgammon <-> Firebase Firestore sync, with required email/password sign-in.
  *
  * WHAT: Email/password sign-in is REQUIRED to use the app. On first launch the
@@ -3009,7 +3079,8 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
  * unsaved session entries. Tapping a cloud entry opens Game Review replay.
  *
  * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
- * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
+ * before <!-- LIVE-MARKER-WASM-20261006-2325 -->
+</body> of the deployed index.html (see INTEGRATION.md). It does NOT
  * modify backgammon.html. It monkey-patches at load:
  *   - window.endGame           -> after a game ends, queue a Firestore save
  *   - window.pastGamesListHtml -> render cloud games + unsaved session games
