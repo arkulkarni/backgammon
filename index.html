@@ -198,12 +198,20 @@ button.offBadge.ready:active{transform:scale(.95);}
 @keyframes thinkPulse{0%,100%{opacity:.25;transform:scale(.85);}50%{opacity:1;transform:scale(1.15);}}
 #blkOpp.thinking{animation:oppGlow 1.6s ease-in-out infinite;border-radius:10px;}
 @keyframes oppGlow{0%,100%{box-shadow:inset 0 0 0 1px rgba(255,217,160,.15);}50%{box-shadow:inset 0 0 0 2px rgba(255,217,160,.55),0 0 14px rgba(255,217,160,.25);}}
-/* ---------- thinking sparkles (hard, foreground) ---------- */
-#thinkSparkles{position:absolute;left:50%;top:6%;transform:translateX(-50%);width:220px;height:130px;pointer-events:none;z-index:6;overflow:visible;}
-#thinkSparkles[hidden]{display:none;}
-.thinkSparkle{position:absolute;bottom:0;border-radius:50%;background:radial-gradient(circle,#fff3c4 0%,#ffd12e 45%,rgba(255,209,46,0) 72%);animation:sparkleRise 1.9s ease-out infinite;}
-@keyframes sparkleRise{0%{transform:translateY(0) scale(.35);opacity:0;}18%{opacity:.95;}100%{transform:translateY(-105px) scale(1.15);opacity:0;}}
-/* ---------- end thinking sparkles ---------- */
+/* ---------- thinking indicator (hard, foreground) ---------- */
+#thinkIndicator{position:absolute;left:50%;top:5%;transform:translateX(-50%);z-index:6;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:7px;}
+#thinkIndicator[hidden]{display:none;}
+#thinkIndicator .thinkGlyph{width:34px;height:34px;animation:thinkFloat 3s ease-in-out infinite;}
+#thinkIndicator .thinkGlyph svg{width:100%;height:100%;display:block;animation:thinkGlow 2.2s ease-in-out infinite;}
+@keyframes thinkFloat{0%,100%{transform:translateY(0);}50%{transform:translateY(-7px);}}
+@keyframes thinkGlow{0%,100%{filter:drop-shadow(0 0 3px rgba(255,209,46,.55));opacity:.85;}50%{filter:drop-shadow(0 0 10px rgba(255,209,46,.95));opacity:1;}}
+#thinkIndicator .thinkLabel{font-variant:small-caps;letter-spacing:.38em;text-indent:.38em;font-size:13px;color:#f3d9a4;text-shadow:0 1px 8px rgba(0,0,0,.65);white-space:nowrap;animation:thinkLabelBreathe 2.2s ease-in-out infinite;}
+@keyframes thinkLabelBreathe{0%,100%{opacity:.75;}50%{opacity:1;}}
+#thinkIndicator .thinkLabel .eldot{animation:thinkEl 1.8s infinite;}
+#thinkIndicator .thinkLabel .eldot:nth-child(2){animation-delay:.3s;}
+#thinkIndicator .thinkLabel .eldot:nth-child(3){animation-delay:.6s;}
+@keyframes thinkEl{0%,100%{opacity:.2;}50%{opacity:1;}}
+/* ---------- end thinking indicator ---------- */
 /* ---------- overlays ---------- */
 .overlay{position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center; padding:16px;
   background:rgba(8,5,3,.66); backdrop-filter:blur(5px);}
@@ -495,7 +503,7 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   <div id="playArea">
   <main id="stage">
     <div id="confetti" aria-hidden="true" hidden></div>
-    <div id="thinkSparkles" aria-hidden="true" hidden></div>
+    <div id="thinkIndicator" aria-hidden="true" hidden><span class="thinkGlyph"><svg viewBox="0 0 24 24"><defs><radialGradient id="thinkGlyphGrad" cx="50%" cy="42%" r="65%"><stop offset="0%" stop-color="#fff6d8"/><stop offset="55%" stop-color="#ffd94d"/><stop offset="100%" stop-color="#e8a91c"/></radialGradient></defs><path d="M12 1 C13.4 7.2 16.8 10.6 23 12 C16.8 13.4 13.4 16.8 12 23 C10.6 16.8 7.2 13.4 1 12 C7.2 10.6 10.6 7.2 12 1 Z" fill="url(#thinkGlyphGrad)"/></svg></span><span class="thinkLabel">Thinking<span class="eldot">.</span><span class="eldot">.</span><span class="eldot">.</span></span></div>
     <svg id="board" viewBox="0 0 1200 900" preserveAspectRatio="xMidYMid meet" aria-label="Backgammon board">
       <defs>
         <radialGradient id="gFelt" cx="48%" cy="42%" r="88%">
@@ -2241,22 +2249,13 @@ function showAiNoMoveDialog(tok,partial){
     }}
   ]);
 }
-function startThinkSparkles(){
-  const box=$('thinkSparkles');if(!box)return;
-  box.innerHTML='';box.hidden=false;
-  for(let i=0;i<14;i++){
-    const s=document.createElement('i');s.className='thinkSparkle';
-    const size=5+Math.random()*9;
-    s.style.width=s.style.height=size.toFixed(1)+'px';
-    s.style.left=(Math.random()*100).toFixed(1)+'%';
-    s.style.animationDelay=(Math.random()*1.9).toFixed(2)+'s';
-    s.style.animationDuration=(1.5+Math.random()*0.9).toFixed(2)+'s';
-    box.appendChild(s);
-  }
+function startThinkIndicator(){
+  const box=$('thinkIndicator');if(!box)return;
+  box.hidden=false;
 }
-function stopThinkSparkles(){
-  const box=$('thinkSparkles');if(!box)return;
-  box.hidden=true;box.innerHTML='';
+function stopThinkIndicator(){
+  const box=$('thinkIndicator');if(!box)return;
+  box.hidden=true;
 }
 async function aiTurn(openingDice){
   GAME.phase='ai';syncUI();clearHL();
@@ -2284,10 +2283,9 @@ async function aiTurn(openingDice){
   let seq;
   if(GAME.difficulty==='hard'){
     // Hybrid lookahead: fast pruned 2-ply, selective 3-ply in sharp spots.
-    // Sparkles + pulsing indicator show while it works. A hard timeout
+    // The sparkle-and-Thinking indicator shows while it works. A hard timeout
     // guarantees the turn never stalls, even if the search hangs.
-    const dots=$('thinkDots'),blk=$('blkOpp');
-    if(dots)dots.hidden=false;if(blk)blk.classList.add('thinking');startThinkSparkles();
+    startThinkIndicator();
     try{
       seq=await Promise.race([
         aiPickHardHybrid(GAME.state,dice,GAME.sideAI),
@@ -2295,7 +2293,7 @@ async function aiTurn(openingDice){
       ]);
     }
     catch(e){seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);}
-    if(dots)dots.hidden=true;if(blk)blk.classList.remove('thinking');stopThinkSparkles();
+    stopThinkIndicator();
   }else{
     seq=aiPick(GAME.state,dice,GAME.sideAI,GAME.difficulty);
   }
