@@ -1310,7 +1310,7 @@ function matchWasmSeq(st,me,dice,parsed){
 async function aiPickWasm(state,dice,me){
   const core=await window.GNUBG;
   if(!core)throw new Error('WASM gnubg not available');
-  const res=core.hint(toXGID(state,me,dice),1);
+  const res=core.hint(toXGID(state,me,dice),2);
   if(!res||res.action!=='play'||!res.data||!res.data.length)throw new Error('WASM no play');
   const sq=matchWasmSeq(state,me,dice,parseWasmMove(res.data[0].move,me));
   if(!sq)throw new Error('WASM move match failed');
@@ -3079,7 +3079,7 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
  * unsaved session entries. Tapping a cloud entry opens Game Review replay.
  *
  * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
- * before <!-- LIVE-MARKER-WASM-20261006-2325 -->
+ * before <!-- LIVE-MARKER-WASM-D2-20261007-0656 -->
 </body> of the deployed index.html (see INTEGRATION.md). It does NOT
  * modify backgammon.html. It monkey-patches at load:
  *   - window.endGame           -> after a game ends, queue a Firestore save
