@@ -2006,12 +2006,50 @@ function showPastGames(returnTo){
   $('pgBack').onclick=()=>{Snd.btn();backToSetup?showSetup():openMenu();};
   overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
+function resignProbs(){
+  // [P(human loses single), P(loses gammon), P(loses backgammon)], or null if unscorable.
+  try{
+    const g=window.GNUbgEvaluator;
+    if(!(g&&g.ready))return null;
+    const r=g.evaluate(toGNUBoard(GAME.state,GAME.sideHuman));
+    if(!r)return null;
+    const pBack=Math.max(0,r.loseBackgammon||0);
+    const pGam=Math.max(0,r.loseGammon||0);
+    const pWin=Math.min(1,Math.max(0,r.win||0));
+    const pSingle=Math.max(0,(1-pWin)-pGam-pBack);
+    return [pSingle,pGam,pBack];
+  }catch(e){return null;}
+}
+function confirmResign(){
+  const probs=resignProbs();
+  const rows=[
+    {pts:1,label:'Single',p:probs?probs[0]:null},
+    {pts:2,label:'Gammon',p:probs?probs[1]:null},
+    {pts:3,label:'Backgammon',p:probs?probs[2]:null}
+  ];
+  let sel=0;
+  if(probs){let best=-1;rows.forEach((r,i)=>{if(r.p>best){best=r.p;sel=i;}});}
+  const pct=p=>p==null?'':` · ${Math.round(p*100)}%`;
+  const rowHtml=(r,i)=>`<button class="pill${i===sel?' sel':''}" data-rs="${i}" type="button"><span class="tierName">${r.label} · ${r.pts} point${r.pts===1?'':'s'}${pct(r.p)}</span></button>`;
+  showOverlay(`<h2>Resign game?</h2>
+    <div class="pillRow" style="flex-direction:column">${rows.map(rowHtml).join('')}</div>
+    <p class="dim">The game will be recorded as resigned and saved to Past Games with a full game review.</p>
+    <div class="outcomeFooter"><button class="pbtn" id="rsYes">RESIGN</button><button class="pbtn" id="rsNo">KEEP PLAYING</button></div>`,'modalCard');
+  overlayCard.querySelectorAll('[data-rs]').forEach(el=>el.onclick=()=>{
+    Snd.pick();sel=Number(el.getAttribute('data-rs'));
+    overlayCard.querySelectorAll('[data-rs]').forEach(x=>x.classList.toggle('sel',x===el));
+  });
+  $('rsYes').onclick=()=>{Snd.btn();endGame(GAME.sideAI,{resigned:true,resignPoints:rows[sel].pts});};
+  $('rsNo').onclick=()=>{Snd.btn();openMenu();};
+}
 function openMenu(){
   const engine=window.GNUbgEvaluator,engineReady=!!(engine&&engine.ready);
   const engineState=!engine?'Game Review is unavailable':engineReady?'':engine.status==='waiting'?'Game Review download interrupted · retrying automatically':engine.status==='retrying'?'Game Review is retrying its download…':'Game Review is downloading…';
+  const inGame=['rolloff','preroll','rolling','nomove','moving','endturn','ai','tutor','animating'].includes(GAME.phase);
   showOverlay(`<h2>Menu</h2>
     <button class="pbtn" id="mResume">RESUME</button>
     <button class="pbtn" id="mNew">NEW GAME</button>
+    ${inGame?'<button class="pbtn" id="mResign">RESIGN</button>':''}
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
@@ -2019,6 +2057,7 @@ function openMenu(){
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
   $('mResume').onclick=()=>{Snd.btn();hideOverlay();};
   $('mNew').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
+  const mResign=$('mResign');if(mResign)mResign.onclick=()=>{Snd.btn();confirmResign();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
@@ -2949,7 +2988,7 @@ function renderResultDialog(){
   const youAccLabel=GAME.nameYou==='You'?'Your accuracy':youName+'’s accuracy';
   const playerWon=r.winner===GAME.sideHuman;
   const secondPerson=playerWon&&String(r.name).trim().toLowerCase()==='you';
-  const resultText=secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`;
+  const resultText=r.resigned?'You resigned — Computer wins.':(secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`);
   const celebration=playerWon?'<span class="resultCelebration" aria-hidden="true">★</span>':'';
   const accuracy=s=>s.accuracy==null?'—':s.accuracy;
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
@@ -2965,19 +3004,21 @@ async function showResultDialog(){
   analyzeMissingRecords();
   renderResultDialog();
 }
-function endGame(winner){
+function endGame(winner,opts){
+  opts=opts||{};
   finishCurrentTurnRecord();GAME.phase='over';bumpToken();clearHL();syncUI();
-  const info=gammonInfo(GAME.state,winner),pts=info.mult;updatePanel();
+  const info=opts.resigned?{mult:opts.resignPoints||1,label:'resigned'}:gammonInfo(GAME.state,winner);
+  const pts=info.mult;updatePanel();
   let resultDelay=700;
   if(winner===GAME.sideHuman){Snd.win();resultDelay=celebrateVictory()||resultDelay;}else Snd.lose();
   const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp;
-  GAME.lastResult={winner,name:wname,points:pts,state:cloneState(GAME.state),info};
+  GAME.lastResult={winner,name:wname,points:pts,state:cloneState(GAME.state),info,resigned:!!opts.resigned};
   const won=winner===GAME.sideHuman;
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
     nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
     diffKey:GAME.difficulty,diffLabel:(AI_TIERS[GAME.difficulty]||{}).label||GAME.difficulty,
-    resultLabel:won?'You won':'Computer won',scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
+    resultLabel:opts.resigned?'You resigned':(won?'You won':'Computer won'),scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
   if(GAME.pastGames.length>10)GAME.pastGames.length=10;
