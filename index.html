@@ -1352,7 +1352,7 @@ function setRollVisible(visible){
   btnRoll.setAttribute('tabindex',visible?'0':'-1');
 }
 // 1.5× the previous playback speed, for player, computer, hit-to-bar and dice motion.
-const MOTION={human:1200,computer:1600,barHuman:1200,barComputer:1600,gap:240,settle:200,diceRollOff:1000,diceTurn:1000,doubleReveal:360};
+const MOTION={human:800,computer:1067,barHuman:800,barComputer:1067,gap:160,settle:200,diceRollOff:1000,diceTurn:1000,doubleReveal:360};
 function slotX(s){return s<6?76+92*s:664+92*(s-6);}
 function idxSlot(idx){const d=dispFlip()?23-idx:idx;return d<12?{slot:11-d,row:'b'}:{slot:d-12,row:'t'};}
 // Display flip: when you play black the whole board rotates 180° so your
