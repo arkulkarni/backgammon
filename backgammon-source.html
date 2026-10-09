@@ -2978,7 +2978,7 @@ function renderResultDialog(){
   const youAccLabel=GAME.nameYou==='You'?'Your accuracy':youName+'’s accuracy';
   const playerWon=r.winner===GAME.sideHuman;
   const secondPerson=playerWon&&String(r.name).trim().toLowerCase()==='you';
-  const resultText=r.resigned?'You resigned — Computer wins.':(secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`);
+  const resultText=r.resigned?`You ${resignLabel(r.info.mult||1)} — Computer wins.`:(secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`);
   const celebration=playerWon?'<span class="resultCelebration" aria-hidden="true">★</span>':'';
   const accuracy=s=>s.accuracy==null?'—':s.accuracy;
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
@@ -2994,10 +2994,12 @@ async function showResultDialog(){
   analyzeMissingRecords();
   renderResultDialog();
 }
+function resignLabel(pts){return pts>=3?'resigned backgammon':pts===2?'resigned gammon':'resigned single';}
 function endGame(winner,opts){
   opts=opts||{};
   finishCurrentTurnRecord();GAME.phase='over';bumpToken();clearHL();syncUI();
-  const info=opts.resigned?{mult:opts.resignPoints||1,label:'resigned'}:gammonInfo(GAME.state,winner);
+  const resignPts=opts.resigned?(opts.resignPoints||1):0;
+  const info=opts.resigned?{mult:resignPts,label:resignLabel(resignPts)}:gammonInfo(GAME.state,winner);
   const pts=info.mult;updatePanel();
   let resultDelay=700;
   if(winner===GAME.sideHuman){Snd.win();resultDelay=celebrateVictory()||resultDelay;}else Snd.lose();
