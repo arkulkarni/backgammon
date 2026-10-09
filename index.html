@@ -1989,9 +1989,16 @@ function openArchivedGame(index){
   const first=keyMoments()[0];
   showReplay(first?first.recordIndex:0,!!first);
 }
+function pastGameSubtitle(g){
+  const parts=[];
+  if(g.dateLabel)parts.push(g.dateLabel);
+  if(g.sideHuman==='w')parts.push('White');else if(g.sideHuman==='b')parts.push('Black');
+  if(g.diffLabel)parts.push(g.diffLabel);else if(g.diffKey)parts.push(g.diffKey);
+  return parts.join(' · ');
+}
 function pastGamesListHtml(){
   if(!GAME.pastGames.length)return'<div class="pastEmpty">No completed games this session</div>';
-  return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(g.dateLabel)} · Open review</span></button>`).join('');
+  return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(pastGameSubtitle(g))}</span></button>`).join('');
 }
 function showPastGames(returnTo){
   const backToSetup=returnTo==='setup';
@@ -2969,6 +2976,7 @@ function endGame(winner){
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
     nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
+    diffKey:GAME.difficulty,diffLabel:(AI_TIERS[GAME.difficulty]||{}).label||GAME.difficulty,
     resultLabel:won?'You won':'Computer won',scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
@@ -3079,8 +3087,7 @@ window.__dbg={G:GAME,roll:onRoll,state:()=>GAME.state,seqs:()=>GAME.seqs};
  * unsaved session entries. Tapping a cloud entry opens Game Review replay.
  *
  * HOW IT IS WIRED IN: this file is inlined verbatim into a <script> block just
- * before <!-- LIVE-MARKER-WASM-D2-20261007-0656 -->
-</body> of the deployed index.html (see INTEGRATION.md). It does NOT
+ * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
  * modify backgammon.html. It monkey-patches at load:
  *   - window.endGame           -> after a game ends, queue a Firestore save
  *   - window.pastGamesListHtml -> render cloud games + unsaved session games
@@ -3209,6 +3216,13 @@ function openCloudGame(entry){
  * itself wraps this in <div class="pastGames">). When Firebase is down /
  * not loaded, GAME.cloudGames is empty and this delegates to the original
  * renderer, so output is pixel-identical. */
+function pastSub(g){
+  var parts=[];
+  if(g.dateLabel)parts.push(g.dateLabel);
+  if(g.sideHuman==='w')parts.push('White');else if(g.sideHuman==='b')parts.push('Black');
+  if(g.diffLabel)parts.push(g.diffLabel);
+  return parts.join(' · ');
+}
 function mergedPastGamesListHtml(){
   var orig=window.pastGamesListHtml.__bgOrig;
   var cloud=GAME.cloudGames||[];
@@ -3216,13 +3230,13 @@ function mergedPastGamesListHtml(){
   var cloudSync={};
   cloud.forEach(function(e){if(e.syncId)cloudSync[e.syncId]=1;});
   var cloudBtns=cloud.map(function(g,i){
-    return '<button class="pastGameBtn" data-cloudgame="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>';
+    return '<button class="pastGameBtn" data-cloudgame="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(pastSub(g))+'</span></button>';
   });
   var sessionBtns=[];
   for(var i=0;i<GAME.pastGames.length;i++){
     var g=GAME.pastGames[i];
     if(g._syncId&&cloudSync[g._syncId])continue; // already shown in cloud list
-    sessionBtns.push('<button class="pastGameBtn" data-past="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>');
+    sessionBtns.push('<button class="pastGameBtn" data-past="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(pastSub(g))+'</span></button>');
   }
   var all=cloudBtns.concat(sessionBtns);
   if(!all.length)return orig();
@@ -3470,6 +3484,7 @@ function cloudViewOf(entry,cloudId){
     record:entry.record,lastResult:entry.lastResult,
     nameYou:entry.nameYou,nameOpp:entry.nameOpp,
     sideHuman:entry.sideHuman,sideAI:entry.sideAI,
+    diffKey:entry.diffKey||null,diffLabel:entry.diffLabel||entry.diffKey||null,
     resultLabel:entry.resultLabel,scoreLabel:entry.scoreLabel,
     dateLabel:entry.dateLabel
   };
@@ -3518,6 +3533,7 @@ function docToView(docId,d){
     record:unpackRecord(d.record),lastResult:unpackLastResult(d.lastResult),
     nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
     sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
+    diffKey:d.difficulty||null,diffLabel:d.difficultyLabel||d.difficulty||null,
     resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
     dateLabel:d.dateLabel||fmtDate(d.createdAt)
   };

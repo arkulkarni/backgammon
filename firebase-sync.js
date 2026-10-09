@@ -143,6 +143,13 @@ function openCloudGame(entry){
  * itself wraps this in <div class="pastGames">). When Firebase is down /
  * not loaded, GAME.cloudGames is empty and this delegates to the original
  * renderer, so output is pixel-identical. */
+function pastSub(g){
+  var parts=[];
+  if(g.dateLabel)parts.push(g.dateLabel);
+  if(g.sideHuman==='w')parts.push('White');else if(g.sideHuman==='b')parts.push('Black');
+  if(g.diffLabel)parts.push(g.diffLabel);
+  return parts.join(' · ');
+}
 function mergedPastGamesListHtml(){
   var orig=window.pastGamesListHtml.__bgOrig;
   var cloud=GAME.cloudGames||[];
@@ -150,13 +157,13 @@ function mergedPastGamesListHtml(){
   var cloudSync={};
   cloud.forEach(function(e){if(e.syncId)cloudSync[e.syncId]=1;});
   var cloudBtns=cloud.map(function(g,i){
-    return '<button class="pastGameBtn" data-cloudgame="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>';
+    return '<button class="pastGameBtn" data-cloudgame="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(pastSub(g))+'</span></button>';
   });
   var sessionBtns=[];
   for(var i=0;i<GAME.pastGames.length;i++){
     var g=GAME.pastGames[i];
     if(g._syncId&&cloudSync[g._syncId])continue; // already shown in cloud list
-    sessionBtns.push('<button class="pastGameBtn" data-past="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(g.dateLabel)+' · Open review</span></button>');
+    sessionBtns.push('<button class="pastGameBtn" data-past="'+i+'"><b>'+escHtml(g.resultLabel)+' · '+g.scoreLabel+'</b><span>'+escHtml(pastSub(g))+'</span></button>');
   }
   var all=cloudBtns.concat(sessionBtns);
   if(!all.length)return orig();
@@ -404,6 +411,7 @@ function cloudViewOf(entry,cloudId){
     record:entry.record,lastResult:entry.lastResult,
     nameYou:entry.nameYou,nameOpp:entry.nameOpp,
     sideHuman:entry.sideHuman,sideAI:entry.sideAI,
+    diffKey:entry.diffKey||null,diffLabel:entry.diffLabel||entry.diffKey||null,
     resultLabel:entry.resultLabel,scoreLabel:entry.scoreLabel,
     dateLabel:entry.dateLabel
   };
@@ -452,6 +460,7 @@ function docToView(docId,d){
     record:unpackRecord(d.record),lastResult:unpackLastResult(d.lastResult),
     nameYou:d.nameYou||'You',nameOpp:d.nameOpp||'Computer',
     sideHuman:d.sideHuman||'b',sideAI:d.sideAI||'w',
+    diffKey:d.difficulty||null,diffLabel:d.difficultyLabel||d.difficulty||null,
     resultLabel:d.resultLabel||'Game',scoreLabel:d.scoreLabel||'',
     dateLabel:d.dateLabel||fmtDate(d.createdAt)
   };

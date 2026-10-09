@@ -1983,9 +1983,16 @@ function openArchivedGame(index){
   const first=keyMoments()[0];
   showReplay(first?first.recordIndex:0,!!first);
 }
+function pastGameSubtitle(g){
+  const parts=[];
+  if(g.dateLabel)parts.push(g.dateLabel);
+  if(g.sideHuman==='w')parts.push('White');else if(g.sideHuman==='b')parts.push('Black');
+  if(g.diffLabel)parts.push(g.diffLabel);else if(g.diffKey)parts.push(g.diffKey);
+  return parts.join(' · ');
+}
 function pastGamesListHtml(){
   if(!GAME.pastGames.length)return'<div class="pastEmpty">No completed games this session</div>';
-  return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(g.dateLabel)} · Open review</span></button>`).join('');
+  return GAME.pastGames.map((g,i)=>`<button class="pastGameBtn" data-past="${i}"><b>${escHtml(g.resultLabel)} · ${g.scoreLabel}</b><span>${escHtml(pastGameSubtitle(g))}</span></button>`).join('');
 }
 function showPastGames(returnTo){
   const backToSetup=returnTo==='setup';
@@ -2963,6 +2970,7 @@ function endGame(winner){
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
     nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
+    diffKey:GAME.difficulty,diffLabel:(AI_TIERS[GAME.difficulty]||{}).label||GAME.difficulty,
     resultLabel:won?'You won':'Computer won',scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
