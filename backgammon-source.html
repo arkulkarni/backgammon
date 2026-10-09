@@ -2896,6 +2896,7 @@ async function animateReplayNavigation(targetIndex,asKey){
     GAME.state=st;layout(st,false);updatePanel();
     for(let r=from;r<target;r++){
       const row=GAME.record[r],actor=row.side===GAME.sideAI?'computer':'human';
+      if(row.dice&&row.dice.length)showDice(row.dice);
       for(const m of row.moves){
         if(tok!==reviewAnimationToken)return;
         const movingId=movingCheckerId(st,m,row.side);
@@ -2914,6 +2915,7 @@ async function animateReplayNavigation(targetIndex,asKey){
     layout(GAME.state,false);updatePanel();
     for(let r=from-1;r>=target;r--){
       const row=GAME.record[r],states=[cloneState(row.before)];
+      if(row.dice&&row.dice.length)showDice(row.dice);
       let step=cloneState(row.before);
       for(const m of row.moves){step=applyMove(step,m,row.side);states.push(cloneState(step));}
       for(let k=row.moves.length-1;k>=0;k--){
