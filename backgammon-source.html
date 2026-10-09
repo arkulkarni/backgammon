@@ -2032,6 +2032,13 @@ function confirmResign(){
   $('rsYes').onclick=()=>{Snd.btn();endGame(GAME.sideAI,{resigned:true,resignPoints:rows[sel].pts});};
   $('rsNo').onclick=()=>{Snd.btn();openMenu();};
 }
+function confirmAbandon(){
+  showOverlay(`<h2>Abandon game?</h2>
+    <p class="dim">This game won't be recorded or saved to Past Games.</p>
+    <div class="outcomeFooter"><button class="pbtn" id="abYes">ABANDON</button><button class="pbtn" id="abNo">KEEP PLAYING</button></div>`,'modalCard');
+  $('abYes').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
+  $('abNo').onclick=()=>{Snd.btn();openMenu();};
+}
 function openMenu(){
   const engine=window.GNUbgEvaluator,engineReady=!!(engine&&engine.ready);
   const engineState=!engine?'Game Review is unavailable':engineReady?'':engine.status==='waiting'?'Game Review download interrupted · retrying automatically':engine.status==='retrying'?'Game Review is retrying its download…':'Game Review is downloading…';
@@ -2046,7 +2053,7 @@ function openMenu(){
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
   $('mResume').onclick=()=>{Snd.btn();hideOverlay();};
-  $('mNew').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
+  $('mNew').onclick=()=>{Snd.btn();if(inGame)confirmAbandon();else{bumpToken();hideOverlay();showSetup();}};
   const mResign=$('mResign');if(mResign)mResign.onclick=()=>{Snd.btn();confirmResign();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
