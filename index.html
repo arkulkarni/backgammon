@@ -2030,15 +2030,11 @@ function confirmResign(){
   let sel=0;
   if(probs){let best=-1;rows.forEach((r,i)=>{if(r.p>best){best=r.p;sel=i;}});}
   const pct=p=>p==null?'':` · ${Math.round(p*100)}%`;
-  const rowHtml=(r,i)=>`<button class="pill${i===sel?' sel':''}" data-rs="${i}" type="button"><span class="tierName">${r.label} · ${r.pts} point${r.pts===1?'':'s'}${pct(r.p)}</span></button>`;
+  const rowHtml=(r,i)=>`<div class="pill${i===sel?' sel':''}" style="cursor:default"><span class="tierName">${r.label} · ${r.pts} point${r.pts===1?'':'s'}${pct(r.p)}${i===sel?' · most likely':''}</span></div>`;
   showOverlay(`<h2>Resign game?</h2>
     <div class="pillRow" style="flex-direction:column">${rows.map(rowHtml).join('')}</div>
-    <p class="dim">The game will be recorded as resigned and saved to Past Games with a full game review.</p>
+    <p class="dim">Resigning records the game as a resigned ${rows[sel].label.toLowerCase()} (${rows[sel].pts} point${rows[sel].pts===1?'':'s'}) and saves it to Past Games with a full game review.</p>
     <div class="outcomeFooter"><button class="pbtn" id="rsYes">RESIGN</button><button class="pbtn" id="rsNo">KEEP PLAYING</button></div>`,'modalCard');
-  overlayCard.querySelectorAll('[data-rs]').forEach(el=>el.onclick=()=>{
-    Snd.pick();sel=Number(el.getAttribute('data-rs'));
-    overlayCard.querySelectorAll('[data-rs]').forEach(x=>x.classList.toggle('sel',x===el));
-  });
   $('rsYes').onclick=()=>{Snd.btn();endGame(GAME.sideAI,{resigned:true,resignPoints:rows[sel].pts});};
   $('rsNo').onclick=()=>{Snd.btn();openMenu();};
 }
