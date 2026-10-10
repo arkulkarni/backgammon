@@ -2018,14 +2018,13 @@ function showPastGames(returnTo){
 }
 function resignProbs(){
   // [P(human loses single), P(loses gammon), P(loses backgammon)], or null if unscorable.
-  // evaluate(toGNUBoard(st, sideHuman)) scores from the OPPONENT's perspective
-  // (see positionEval, which negates the result), so the human's loss breakdown
-  // comes from the opponent's win outputs. Those gammon outputs are cumulative
-  // (winGammon includes backgammon), so subtract to get exclusive probabilities.
+  // evaluate() scores from the index-1 player's perspective, so pass the OPPONENT
+  // to get their win breakdown (= the human's loss breakdown). Those gammon outputs
+  // are cumulative (winGammon includes backgammon), so subtract for exclusive probs.
   try{
     const g=window.GNUbgEvaluator;
     if(!(g&&g.ready))return null;
-    const r=g.evaluate(toGNUBoard(GAME.state,GAME.sideHuman));
+    const r=g.evaluate(toGNUBoard(GAME.state,other(GAME.sideHuman)));
     if(!r)return null;
     const pBack=Math.max(0,r.winBackgammon||0);
     const pGam=Math.max(0,(r.winGammon||0)-pBack);
