@@ -485,7 +485,7 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
 @media (max-aspect-ratio:1/1){
   #playArea{flex:1 1 0;min-height:0;}
   body.reviewing #side{width:calc(100% - 12px);height:auto;min-height:164px;padding:8px 10px;}
-  body.reviewing #reviewTimelineDock{flex-basis:76px;margin:0 6px 5px;padding:8px 14px 4px;}
+  body.reviewing #reviewTimelineDock{flex-basis:94px;margin:0 6px 5px;padding:8px 14px 4px;}
   .reviewHud{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,1fr);grid-template-rows:auto auto;gap:7px 10px;}
   .reviewHudTop{grid-column:1;grid-row:1;padding:0 38px 7px 0;}
   .reviewMoveInfo{gap:7px;min-height:38px;}
@@ -497,6 +497,20 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   .reviewNavBlock{grid-column:2;grid-row:1/3;margin-top:0;}
   .reviewCounter{margin-bottom:4px;}
 }
+.timelineLegend{display:flex;justify-content:center;gap:14px;margin-top:3px;color:#a99576;font-size:9px;letter-spacing:.04em}
+.timelineLegend i{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+.timelineLegend .lg-you{background:#f2cf58}
+.timelineLegend .lg-comp{background:#7a8ba0}
+.timelineLegend .lg-key{background:#ff5a3c}
+.timelineTicks i.tick-opening,.timelineTicks i.tick-player,.timelineTicks i.tick-computer{width:5px;height:5px;margin:-0.5px 0 0 -2.5px;box-shadow:none;border:0}
+.timelineTicks i.tick-opening{background:#8f7b60}
+.timelineTicks i.tick-player{background:#f2cf58}
+.timelineTicks i.tick-computer{background:#7a8ba0}
+.timelineTicks i.tick-key{width:10px;height:10px;margin:-3px 0 0 -5px;background:#ff5a3c;border:2px solid #fff;box-shadow:0 0 7px rgba(255,90,60,.9);z-index:2}
+.timelineTicks i.tick-current{outline:2px solid #fff;outline-offset:2px;z-index:3}
+#reviewTimelineDock .timelineTicks i.tick-opening,#reviewTimelineDock .timelineTicks i.tick-player,#reviewTimelineDock .timelineTicks i.tick-computer{width:7px;height:7px;margin:-1px 0 0 -3.5px}
+#reviewTimelineDock .timelineTicks i.tick-key{width:14px;height:14px;margin:-4px 0 0 -7px}
+.reviewDockPos{font-weight:750;color:#fff4df}
 </style>
 </head>
 <body>
@@ -2977,19 +2991,32 @@ async function showReplay(index,asKey){
   }
   const pct=Math.max(0,Math.min(100,win*100)),moments=keyMoments();
   const keyIndexes=moments.map(m=>m.recordIndex),prevKey=keyIndexes.filter(n=>n<i).pop(),nextKey=keyIndexes.find(n=>n>i);
-  const ticks=keyIndexes.map(n=>`<i style="left:${max?n/max*100:0}%"></i>`).join('');
+  const keySet=new Set(keyIndexes);
+  let ticks='';
+  for(let p=0;p<=max;p++){
+    let cls='tick-opening';
+    if(p>0)cls=GAME.record[p-1].side===GAME.sideHuman?'tick-player':'tick-computer';
+    if(keySet.has(p))cls='tick-player tick-key';
+    if(p===i)cls+=' tick-current';
+    ticks+=`<i class="${cls}" style="left:${max?p/max*100:0}%"></i>`;
+  }
+  const dockPosText=v=>{
+    if(keySet.has(v))return 'Move '+(v+1)+' of '+max+' · You ★ key moment';
+    if(v===0)return 'Opening · Move 0 of '+max;
+    return 'Move '+v+' of '+max+' · '+(GAME.record[v-1].side===GAME.sideHuman?'You':'Computer');
+  };
   const progress=max?i/max*100:0;
   const btnRow=keyRow||row;
   const playedLabel=btnRow&&btnRow.side!==GAME.sideHuman?"Computer's move":"Your move";
   showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${btnRow&&btnRow.moves.length?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${btnRow&&btnRow.analysis&&btnRow.analysis.bestSeq.length?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance · equity · cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${row?cost.toFixed(3):'—'}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter">Move ${i} of ${max}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
   const dock=$('reviewTimelineDock');
-  dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span>${moments.length} KEY ${moments.length===1?'MOMENT':'MOMENTS'}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div></div>`;
+  dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${dockPosText(i)}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};$('rNext').onclick=()=>{Snd.pick();animateReplayNavigation(i+1);};
   $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey,true);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey,true);}};
   $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.moves);};
   $('rBest').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.analysis.bestSeq);};
   const range=$('reviewRange');
-  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent='Move '+value+' of '+max;};
+  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent='Move '+value+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
   range.onchange=()=>{Snd.pick();showReplay(Number(range.value));};
   $('rMainMenu').onclick=()=>{reviewAnimationToken++;Snd.btn();clearHL();GAME.reviewReturn=null;hideOverlay();showSetup();};
 }
