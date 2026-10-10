@@ -2961,10 +2961,11 @@ async function showReplay(index,asKey){
   // play under review. Show the board BEFORE it happened, with its dice cast,
   // so the moment can be replayed forward and compared to the recommendation.
   const keyRow=(asKey&&i<max&&GAME.record[i].analysis)?GAME.record[i]:null;
-  // Always show the dice for the move under review: the key move's dice on a
+  // Always show the dice for the upcoming move: the key move's dice on a
   // key moment (board is at the before-position), otherwise the dice of the
-  // move just played (board is at the after-position). Applies to both sides.
-  const diceRow=keyRow||row;
+  // next move to be played (board is at the after-position of the last move).
+  // At the end of the game there is no next cast, so clear. Applies to both sides.
+  const diceRow=keyRow||(i<max?GAME.record[i]:null);
   if(diceRow&&diceRow.dice&&diceRow.dice.length)showDice(diceRow.dice);else clearDice();
   GAME.state=cloneState(st);layout(GAME.state,false);updatePanel();syncUI();
   let title,subtitle,win,equity,cost=0,actorClass='opening',actorLabel='OPENING';
