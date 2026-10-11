@@ -2984,9 +2984,7 @@ async function showReplay(index,asKey){
     const playerMove=row.side===GAME.sideHuman;
     actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
     const name=playerMove?GAME.nameYou:GAME.nameOpp,a=row.analysis;
-    const moment=keyMoments().find(m=>m.recordIndex===i-1);
-    const tag=moment?(moment.type==='brilliant'?'Brilliant':a.cost>=.16?'Blunder':'Mistake')+' · ':'';
-    title=`${tag}Move ${i} · ${escHtml(name)}`;
+    title=`Move ${i} · ${escHtml(name)}`;
     subtitle=escHtml(moveNotation(row.moves,row.side));win=a.playedWin;equity=a.playedEquity;cost=a.cost;
   }
   const pct=Math.max(0,Math.min(100,win*100)),moments=keyMoments();
@@ -3000,8 +2998,9 @@ async function showReplay(index,asKey){
     if(p===i)cls+=' tick-current';
     ticks+=`<i class="${cls}" style="left:${max?p/max*100:0}%"></i>`;
   }
-  const dockPosText=v=>{
-    if(keySet.has(v))return 'Move '+(v+1)+' of '+max+' · You ★ key moment';
+  const dockPosText=(v,isKey=asKey)=>{
+    const isKeyView=isKey&&keySet.has(v);
+    if(isKeyView)return 'Move '+(v+1)+' of '+max+' · You ★ key moment';
     if(v===0)return 'Opening · Move 0 of '+max;
     return 'Move '+v+' of '+max+' · '+(GAME.record[v-1].side===GAME.sideHuman?'You':'Computer');
   };
@@ -3016,7 +3015,7 @@ async function showReplay(index,asKey){
   $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.moves);};
   $('rBest').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.analysis.bestSeq);};
   const range=$('reviewRange');
-  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent='Move '+value+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
+  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent='Move '+value+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value,false);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
   range.onchange=()=>{Snd.pick();showReplay(Number(range.value));};
   $('rMainMenu').onclick=()=>{reviewAnimationToken++;Snd.btn();clearHL();GAME.reviewReturn=null;hideOverlay();showSetup();};
 }
