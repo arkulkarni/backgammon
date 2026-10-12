@@ -2925,6 +2925,8 @@ async function animateReplayNavigation(targetIndex,fast){
         await sleep(motion.totalMs+settleMs);
       }
       if(!row.moves.length)await sleep(180/speed);
+      if(tok!==reviewAnimationToken)return;
+      syncReviewChrome(r+1);
     }
   }else{
     let st=posBoard(from);
@@ -2941,6 +2943,8 @@ async function animateReplayNavigation(targetIndex,fast){
         await sleep(duration+settleMs);
       }
       if(!row.moves.length)await sleep(180/speed);
+      if(tok!==reviewAnimationToken)return;
+      syncReviewChrome(r);
     }
   }
   if(tok===reviewAnimationToken)showReplay(target);
@@ -2952,6 +2956,59 @@ async function showKeyMoments(index){
   const m=moments[Math.max(0,Math.min(index,moments.length-1))];
   showReplay(m?m.recordIndex:0);
 }
+// View-model for a review position: the single "move number" primitive.
+// Position i<max shows the board before move i+1; position max is the final board.
+function reviewVM(pos){
+  const max=GAME.record.length,finalPos=pos>=max;
+  const moments=keyMoments(),keySet=new Set(moments.map(m=>m.recordIndex));
+  const moveRow=finalPos?null:GAME.record[pos];
+  const isKey=!finalPos&&keySet.has(pos);
+  let title,subtitle,actorClass,actorLabel,win,equity,cost=0;
+  if(finalPos){
+    actorClass='opening';actorLabel='FINAL';title='Final position';
+    const r=GAME.lastResult;
+    subtitle=r?escHtml(r.name+' \u00b7 '+r.points+' point'+(r.points===1?'':'s')):'Game over';
+    win=r?(r.winner===GAME.sideHuman?1:0):0.5;equity=win>=0.5?1:-1;
+  }else{
+    const a=moveRow.analysis,playerMove=moveRow.side===GAME.sideHuman;
+    actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
+    const name=playerMove?GAME.nameYou:GAME.nameOpp;
+    const moment=isKey?moments.find(m=>m.recordIndex===pos):null;
+    const tag=moment?(moment.type==='brilliant'?'Brilliant':a.cost>=.16?'Blunder':'Mistake')+' \u00b7 ':'';
+    title=`${tag}Move ${pos+1} \u00b7 ${escHtml(name)}`;
+    subtitle=escHtml(moveNotation(moveRow.moves,moveRow.side));
+    win=a.playedWin;equity=a.playedEquity;cost=a.cost;
+  }
+  const dockText=finalPos?('Final \u00b7 Move '+max+' of '+max):(()=>{
+    const side=GAME.record[pos].side===GAME.sideHuman?'You':'Computer';
+    return 'Move '+(pos+1)+' of '+max+' \u00b7 '+side+(isKey?' \u2605 key moment':'');
+  })();
+  return {pos,max,finalPos,isKey,title,subtitle,actorClass,actorLabel,
+    pct:Math.max(0,Math.min(100,win*100)),equity,cost,
+    counterText:finalPos?('Final \u00b7 Move '+max+' of '+max):('Move '+(pos+1)+' of '+max),
+    dockText};
+}
+// Lightweight chrome sync: updates the panel text and timeline in place for
+// position pos, without touching the board or buttons. Used by transitions so
+// the timeline and move numbers track the animation instead of snapping at the end.
+function syncReviewChrome(pos){
+  const vm=reviewVM(pos),max=vm.max;
+  const actor=$('rvActor');if(actor){actor.className='reviewActor '+vm.actorClass;actor.textContent=vm.actorLabel;}
+  const title=$('rvTitle');if(title)title.innerHTML=vm.title;
+  const sub=$('rvSubtitle');if(sub)sub.innerHTML=vm.subtitle;
+  const w=$('rvWin');if(w)w.textContent=vm.pct.toFixed(1)+'%';
+  const e=$('rvEquity');if(e)e.textContent=eqText(vm.equity);
+  const c=$('rvCost');if(c)c.textContent=vm.finalPos?'\u2014':vm.cost.toFixed(3);
+  const counter=$('rvCounter');if(counter)counter.textContent=vm.counterText;
+  const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=vm.dockText;
+  const range=$('reviewRange');
+  if(range){range.value=pos;range.style.setProperty('--progress',(max?pos/max*100:0)+'%');}
+  const dock=$('reviewTimelineDock');
+  if(dock){const ticksWrap=dock.querySelector('.timelineTicks');
+    if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');
+      const el=ticksWrap.children[pos];if(el)el.classList.add('tick-current');}}
+  GAME.replayIndex=pos;
+}
 async function showReplay(index){
   if(!GAME.record.length){toast('No moves to review');return;}
   await ensureGNUReady('Move review');
@@ -2960,38 +3017,16 @@ async function showReplay(index){
   GAME.phase='replay';clearHL();
   const max=GAME.record.length,i=Math.max(0,Math.min(Number(index)||0,max));
   GAME.replayIndex=i;
+  const vm=reviewVM(i);
+  const {title,subtitle,actorClass,actorLabel,pct,equity,cost,finalPos,counterText,dockText}=vm;
   const moments=keyMoments();
   const keyIndexes=moments.map(m=>m.recordIndex),prevKey=keyIndexes.filter(n=>n<i).pop(),nextKey=keyIndexes.find(n=>n>i);
   const keySet=new Set(keyIndexes);
-  const finalPos=i>=max;
-  // Every timeline position shows the board BEFORE a move: position i<max is the
-  // position before move i+1 (record[i].before) with that move's dice, so "Move N"
-  // always means the Nth turn about to be played. Position max is the final board.
-  // Key moments sit at their own move's position, so the timeline tick, the
-  // counter, the dock and the title all agree on the number.
+  // Board for the position (the chrome comes from the view model above).
   const moveRow=finalPos?null:GAME.record[i];
   const st=finalPos?cloneState(GAME.record[max-1].after):cloneState(moveRow.before);
   if(moveRow&&moveRow.dice&&moveRow.dice.length)showDice(moveRow.dice);else clearDice();
   GAME.state=st;layout(st,false);updatePanel();syncUI();
-  let title,subtitle,win,equity,cost=0,actorClass,actorLabel;
-  const isKey=!finalPos&&keySet.has(i);
-  if(finalPos){
-    actorClass='opening';actorLabel='FINAL';
-    title='Final position';
-    const r=GAME.lastResult;
-    subtitle=r?escHtml(r.name+' \u00b7 '+r.points+' point'+(r.points===1?'':'s')):'Game over';
-    win=r?(r.winner===GAME.sideHuman?1:0):0.5;equity=win>=0.5?1:-1;
-  }else{
-    const a=moveRow.analysis,playerMove=moveRow.side===GAME.sideHuman;
-    actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
-    const name=playerMove?GAME.nameYou:GAME.nameOpp;
-    const moment=isKey?moments.find(m=>m.recordIndex===i):null;
-    const tag=moment?(moment.type==='brilliant'?'Brilliant':a.cost>=.16?'Blunder':'Mistake')+' \u00b7 ':'';
-    title=`${tag}Move ${i+1} \u00b7 ${escHtml(name)}`;
-    subtitle=escHtml(moveNotation(moveRow.moves,moveRow.side));
-    win=a.playedWin;equity=a.playedEquity;cost=a.cost;
-  }
-  const pct=Math.max(0,Math.min(100,win*100));
   let ticks='';
   for(let p=0;p<=max;p++){
     let cls=p<max?(GAME.record[p].side===GAME.sideHuman?'tick-player':'tick-computer'):'tick-opening';
@@ -2999,26 +3034,20 @@ async function showReplay(index){
     if(p===i)cls+=' tick-current';
     ticks+=`<i class="${cls}" style="left:${max?p/max*100:0}%"></i>`;
   }
-  const dockPosText=(v)=>{
-    if(v>=max)return 'Final \u00b7 Move '+max+' of '+max;
-    const side=GAME.record[v].side===GAME.sideHuman?'You':'Computer';
-    return 'Move '+(v+1)+' of '+max+' \u00b7 '+side+(keySet.has(v)?' \u2605 key moment':'');
-  };
-  const counterText=finalPos?'Final \u00b7 Move '+max+' of '+max:'Move '+(i+1)+' of '+max;
   const progress=max?i/max*100:0;
   const playedLabel=finalPos?'Your move':(moveRow.side!==GAME.sideHuman?"Computer's move":"Your move");
   const canReplay=!finalPos&&moveRow.moves.length>0;
   const bestOk=!finalPos&&moveRow.analysis&&moveRow.analysis.bestSeq.length>0;
-  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance \u00b7 equity \u00b7 cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${finalPos?'\u2014':cost.toFixed(3)}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
+  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}" id="rvActor">${actorLabel}</em><b id="rvTitle">${title}</b><span id="rvSubtitle">${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance \u00b7 equity \u00b7 cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b id="rvWin">${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b id="rvEquity">${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b id="rvCost">${finalPos?'\u2014':cost.toFixed(3)}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter" id="rvCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
   const dock=$('reviewTimelineDock');
-  dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${dockPosText(i)}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
+  dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${vm.dockText}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};
   $('rNext').onclick=()=>{Snd.pick();animateReplayNavigation(i+1);};
   $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey,true);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey,true);}};
   $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.moves);};
   $('rBest').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.analysis.bestSeq);};
   const range=$('reviewRange');
-  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent=value>=max?'Final \u00b7 Move '+max+' of '+max:'Move '+(value+1)+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
+  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent=reviewVM(value).counterText;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=reviewVM(value).dockText;const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
   range.onchange=()=>{Snd.pick();showReplay(Number(range.value));};
   $('rMainMenu').onclick=()=>{reviewAnimationToken++;Snd.btn();clearHL();GAME.reviewReturn=null;hideOverlay();showSetup();};
 }
