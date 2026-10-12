@@ -1997,7 +1997,7 @@ function openArchivedGame(index){
   GAME.sideHuman=archived.sideHuman;GAME.sideAI=archived.sideAI;
   refreshIdentity();hideOverlay();relabelTriangles();
   const first=keyMoments()[0];
-  showReplay(first?first.recordIndex:0,!!first);
+  showReplay(first?first.recordIndex:0);
 }
 function pastGameSubtitle(g){
   const parts=[];
@@ -2891,21 +2891,24 @@ async function playReviewSequence(row,seq){
   }
   if(tok!==reviewAnimationToken)return;
   await sleep(220);
-  if(tok===reviewAnimationToken)showReplay(GAME.replayIndex,GAME.replayAsKey);
+  if(tok===reviewAnimationToken)showReplay(GAME.replayIndex);
 }
-async function animateReplayNavigation(targetIndex,asKey){
+async function animateReplayNavigation(targetIndex){
   const max=GAME.record.length,from=Math.max(0,Math.min(GAME.replayIndex,max));
   const target=Math.max(0,Math.min(Number(targetIndex)||0,max));
   if(target===from)return;
   const tok=++reviewAnimationToken;
-  // Key-moment jumps fast-forward at 4x; single-step moves play at normal speed.
-  const speed=asKey?4:1,settleMs=MOTION.settle/speed;
+  // Multi-move jumps (key moments) fast-forward at 4x; single steps play at normal speed.
+  const speed=Math.abs(target-from)>1?4:1,settleMs=MOTION.settle/speed;
   overlayCard.querySelectorAll('button,input').forEach(el=>el.disabled=true);
   clearHL();clearDice();
+  // Position p shows the board before move p+1 (record[p].before); the final
+  // position shows the board after the last move.
+  const posBoard=(p)=>p>=max?cloneState(GAME.record[max-1].after):cloneState(GAME.record[p].before);
   if(target>from){
     // Walk through every recorded checker movement so step arrows and key jumps
     // retain the same point-to-point motion and wood sounds as live play.
-    let st=cloneState(from===0?GAME.record[0].before:GAME.record[from-1].after);
+    let st=posBoard(from);
     GAME.state=st;layout(st,false);updatePanel();
     for(let r=from;r<target;r++){
       const row=GAME.record[r],actor=row.side===GAME.sideAI?'computer':'human';
@@ -2924,9 +2927,9 @@ async function animateReplayNavigation(targetIndex,asKey){
       if(!row.moves.length)await sleep(180/speed);
     }
   }else{
-    GAME.state=cloneState(from===0?GAME.record[0].before:GAME.record[from-1].after);
-    layout(GAME.state,false);updatePanel();
-    for(let r=from-1;r>=target;r--){
+    let st=posBoard(from);
+    GAME.state=st;layout(st,false);updatePanel();
+    for(let r=Math.min(from,max)-1;r>=target;r--){
       const row=GAME.record[r],states=[cloneState(row.before)];
       if(row.dice&&row.dice.length)showDice(row.dice);
       let step=cloneState(row.before);
@@ -2940,92 +2943,86 @@ async function animateReplayNavigation(targetIndex,asKey){
       if(!row.moves.length)await sleep(180/speed);
     }
   }
-  if(tok===reviewAnimationToken)showReplay(target,asKey);
+  if(tok===reviewAnimationToken)showReplay(target);
 }
 async function showKeyMoments(index){
   await ensureGNUReady('Key moments review');
   analyzeMissingRecords();
   const moments=keyMoments();
   const m=moments[Math.max(0,Math.min(index,moments.length-1))];
-  showReplay(m?m.recordIndex:0,true);
+  showReplay(m?m.recordIndex:0);
 }
-async function showReplay(index,asKey){
+async function showReplay(index){
   if(!GAME.record.length){toast('No moves to review');return;}
   await ensureGNUReady('Move review');
   analyzeMissingRecords();
   reviewAnimationToken++;
   GAME.phase='replay';clearHL();
-  const max=GAME.record.length,i=Math.max(0,Math.min(Number(index)||0,max));GAME.replayIndex=i;GAME.replayAsKey=!!asKey;
-  const row=i===0?null:GAME.record[i-1],st=row?row.after:GAME.record[0].before;
-  // Key-moment landing: the move at GAME.record[i] is the blunder/brilliant
-  // play under review. Show the board BEFORE it happened, with its dice cast,
-  // so the moment can be replayed forward and compared to the recommendation.
-  const keyRow=(asKey&&i<max&&GAME.record[i].analysis)?GAME.record[i]:null;
-  // Always show the dice for the upcoming move: the key move's dice on a
-  // key moment (board is at the before-position), otherwise the dice of the
-  // next move to be played (board is at the after-position of the last move).
-  // At the end of the game there is no next cast, so clear. Applies to both sides.
-  const diceRow=keyRow||(i<max?GAME.record[i]:null);
-  if(diceRow&&diceRow.dice&&diceRow.dice.length)showDice(diceRow.dice);else clearDice();
-  GAME.state=cloneState(st);layout(GAME.state,false);updatePanel();syncUI();
-  let title,subtitle,win,equity,cost=0,actorClass='opening',actorLabel='OPENING';
-  if(keyRow){
-    const a=keyRow.analysis,playerMove=keyRow.side===GAME.sideHuman;
-    actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
-    const name=playerMove?GAME.nameYou:GAME.nameOpp;
-    const moment=keyMoments().find(m=>m.recordIndex===i);
-    const tag=moment?(moment.type==='brilliant'?'Brilliant':a.cost>=.16?'Blunder':'Mistake')+' · ':'';
-    title=`${tag}Move ${i+1} · ${escHtml(name)}`;
-    subtitle=escHtml(moveNotation(keyRow.moves,keyRow.side));win=a.playedWin;equity=a.playedEquity;cost=a.cost;
-  }else if(!row){
-    title='Opening position';subtitle='Before the first roll';
-    const r=positionEval(st,GAME.record[0].side);win=r.win;equity=r.equity;
-  }else{
-    const playerMove=row.side===GAME.sideHuman;
-    actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
-    const name=playerMove?GAME.nameYou:GAME.nameOpp,a=row.analysis;
-    title=`Move ${i} · ${escHtml(name)}`;
-    subtitle=escHtml(moveNotation(row.moves,row.side));win=a.playedWin;equity=a.playedEquity;cost=a.cost;
-  }
-  const pct=Math.max(0,Math.min(100,win*100)),moments=keyMoments();
+  const max=GAME.record.length,i=Math.max(0,Math.min(Number(index)||0,max));
+  GAME.replayIndex=i;
+  const moments=keyMoments();
   const keyIndexes=moments.map(m=>m.recordIndex),prevKey=keyIndexes.filter(n=>n<i).pop(),nextKey=keyIndexes.find(n=>n>i);
   const keySet=new Set(keyIndexes);
+  const finalPos=i>=max;
+  // Every timeline position shows the board BEFORE a move: position i<max is the
+  // position before move i+1 (record[i].before) with that move's dice, so "Move N"
+  // always means the Nth turn about to be played. Position max is the final board.
+  // Key moments sit at their own move's position, so the timeline tick, the
+  // counter, the dock and the title all agree on the number.
+  const moveRow=finalPos?null:GAME.record[i];
+  const st=finalPos?cloneState(GAME.record[max-1].after):cloneState(moveRow.before);
+  if(moveRow&&moveRow.dice&&moveRow.dice.length)showDice(moveRow.dice);else clearDice();
+  GAME.state=st;layout(st,false);updatePanel();syncUI();
+  let title,subtitle,win,equity,cost=0,actorClass,actorLabel;
+  const isKey=!finalPos&&keySet.has(i);
+  if(finalPos){
+    actorClass='opening';actorLabel='FINAL';
+    title='Final position';
+    const r=GAME.lastResult;
+    subtitle=r?escHtml(r.name+' \u00b7 '+r.points+' point'+(r.points===1?'':'s')):'Game over';
+    win=r?(r.winner===GAME.sideHuman?1:0):0.5;equity=win>=0.5?1:-1;
+  }else{
+    const a=moveRow.analysis,playerMove=moveRow.side===GAME.sideHuman;
+    actorClass=playerMove?'player':'computer';actorLabel=playerMove?'PLAYER MOVE':'COMPUTER MOVE';
+    const name=playerMove?GAME.nameYou:GAME.nameOpp;
+    const moment=isKey?moments.find(m=>m.recordIndex===i):null;
+    const tag=moment?(moment.type==='brilliant'?'Brilliant':a.cost>=.16?'Blunder':'Mistake')+' \u00b7 ':'';
+    title=`${tag}Move ${i+1} \u00b7 ${escHtml(name)}`;
+    subtitle=escHtml(moveNotation(moveRow.moves,moveRow.side));
+    win=a.playedWin;equity=a.playedEquity;cost=a.cost;
+  }
+  const pct=Math.max(0,Math.min(100,win*100));
   let ticks='';
   for(let p=0;p<=max;p++){
-    let cls='tick-opening';
-    if(p>0)cls=GAME.record[p-1].side===GAME.sideHuman?'tick-player':'tick-computer';
+    let cls=p<max?(GAME.record[p].side===GAME.sideHuman?'tick-player':'tick-computer'):'tick-opening';
     if(keySet.has(p))cls='tick-player tick-key';
     if(p===i)cls+=' tick-current';
     ticks+=`<i class="${cls}" style="left:${max?p/max*100:0}%"></i>`;
   }
-  const dockPosText=(v,isKey=asKey)=>{
-    const isKeyView=isKey&&keySet.has(v);
-    if(isKeyView)return 'Move '+(v+1)+' of '+max+' · You ★ key moment';
-    if(v===0)return 'Opening · Move 0 of '+max;
-    return 'Move '+v+' of '+max+' · '+(GAME.record[v-1].side===GAME.sideHuman?'You':'Computer');
+  const dockPosText=(v)=>{
+    if(v>=max)return 'Final \u00b7 Move '+max+' of '+max;
+    const side=GAME.record[v].side===GAME.sideHuman?'You':'Computer';
+    return 'Move '+(v+1)+' of '+max+' \u00b7 '+side+(keySet.has(v)?' \u2605 key moment':'');
   };
+  const counterText=finalPos?'Final \u00b7 Move '+max+' of '+max:'Move '+(i+1)+' of '+max;
   const progress=max?i/max*100:0;
-  const btnRow=keyRow||row;
-  const playedLabel=btnRow&&btnRow.side!==GAME.sideHuman?"Computer's move":"Your move";
-  // Key-moment view is parked at the pre-move position but reviews move i+1;
-  // the counter should name the move under review like the title and dock do.
-  const dispMove=keyRow?i+1:i;
-  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${btnRow&&btnRow.moves.length?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${btnRow&&btnRow.analysis&&btnRow.analysis.bestSeq.length?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance · equity · cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${row?cost.toFixed(3):'—'}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter">Move ${dispMove} of ${max}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
+  const playedLabel=finalPos?'Your move':(moveRow.side!==GAME.sideHuman?"Computer's move":"Your move");
+  const canReplay=!finalPos&&moveRow.moves.length>0;
+  const bestOk=!finalPos&&moveRow.analysis&&moveRow.analysis.bestSeq.length>0;
+  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}">${actorLabel}</em><b>${title}</b><span>${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance \u00b7 equity \u00b7 cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b>${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b>${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b>${finalPos?'\u2014':cost.toFixed(3)}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
   const dock=$('reviewTimelineDock');
   dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${dockPosText(i)}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
-  // < / > step by move number, not timeline position: a key moment at index k
-  // and the plain post-move view at k+1 share the title "Move k+1", so stepping
-  // onto the plain one looks like nothing happened. Skip it in both directions.
-  $('rPrev').onclick=()=>{Snd.pick();let t=i-1;if(keySet.has(t-1))t--;animateReplayNavigation(t,keySet.has(t));};
-  $('rNext').onclick=()=>{Snd.pick();let t=i+1;if(keySet.has(i))t++;animateReplayNavigation(t,keySet.has(t));};
-  $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey,true);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey,true);}};
-  $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.moves);};
-  $('rBest').onclick=()=>{Snd.pick();playReviewSequence(btnRow,btnRow.analysis.bestSeq);};
+  $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};
+  $('rNext').onclick=()=>{Snd.pick();animateReplayNavigation(i+1);};
+  $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey);}};
+  $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.moves);};
+  $('rBest').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.analysis.bestSeq);};
   const range=$('reviewRange');
-  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent='Move '+value+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value,false);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
+  range.oninput=()=>{const value=Number(range.value);range.style.setProperty('--progress',(max?value/max*100:0)+'%');const counter=overlayCard.querySelector('.reviewCounter');if(counter)counter.textContent=value>=max?'Final \u00b7 Move '+max+' of '+max:'Move '+(value+1)+' of '+max;const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=dockPosText(value);const ticksWrap=dock.querySelector('.timelineTicks');if(ticksWrap){const cur=ticksWrap.querySelector('.tick-current');if(cur)cur.classList.remove('tick-current');const el=ticksWrap.children[value];if(el)el.classList.add('tick-current');}};
   range.onchange=()=>{Snd.pick();showReplay(Number(range.value));};
   $('rMainMenu').onclick=()=>{reviewAnimationToken++;Snd.btn();clearHL();GAME.reviewReturn=null;hideOverlay();showSetup();};
 }
+
 function renderResultDialog(){
   const r=GAME.lastResult;if(!r)return;GAME.phase='over';
   const you=humanAnalysisSummary(),opp=analysisSummary(GAME.sideAI),moments=keyMoments();
@@ -3039,7 +3036,7 @@ function renderResultDialog(){
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
   const nextActions=`<div class="outcomeFooter"><button class="pbtn" id="oRematch">REMATCH</button><button class="pbtn" id="oSetup">MENU</button></div>`;
   showOverlay(`<h2>Outcome</h2><div class="resultBanner">${celebration}<div class="resultTitle">${resultText}</div><div class="resultScore">${r.points} point${r.points===1?'':'s'} · ${escHtml(r.info.label)}</div></div><div class="accuracyGrid"><div class="accuracyPlayer"><span>${youAccLabel}</span><b>${accuracy(you)}${you.accuracy==null?'':'%'}</b><small>${you.total.toFixed(3)} total error</small></div><div class="accuracyPlayer"><span>${oppName} accuracy</span><b>${accuracy(opp)}${opp.accuracy==null?'':'%'}</b><small>${opp.total.toFixed(3)} total error</small></div></div><div class="accuracyNote">Accuracy is based on average equity lost per turn.</div><div class="qualityGrid"><div class="qualityHead">MOVE QUALITY</div><div class="qualityHead">${youName}</div><div class="qualityHead">${oppName}</div>${qualityRow('Brilliant',you.brilliant,opp.brilliant)}${qualityRow('Mistakes',you.mistakes,opp.mistakes)}${qualityRow('Blunders',you.blunders,opp.blunders)}</div><div class="reviewMeta">${moments.length} key moment${moments.length===1?'':'s'} flagged</div><button class="pbtn reviewPrimary" id="oReview">GAME REVIEW</button>${nextActions}`,'modalCard outcomeCard');
-  $('oReview').onclick=()=>{Snd.btn();const first=keyMoments()[0];showReplay(first?first.recordIndex:0,true);};
+  $('oReview').onclick=()=>{Snd.btn();const first=keyMoments()[0];showReplay(first?first.recordIndex:0);};
   $('oRematch').onclick=()=>{Snd.btn();hideOverlay();newGame();};
   $('oSetup').onclick=()=>{Snd.btn();hideOverlay();showSetup();};
 }
