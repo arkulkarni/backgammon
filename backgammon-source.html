@@ -2893,13 +2893,13 @@ async function playReviewSequence(row,seq){
   await sleep(220);
   if(tok===reviewAnimationToken)showReplay(GAME.replayIndex);
 }
-async function animateReplayNavigation(targetIndex){
+async function animateReplayNavigation(targetIndex,fast){
   const max=GAME.record.length,from=Math.max(0,Math.min(GAME.replayIndex,max));
   const target=Math.max(0,Math.min(Number(targetIndex)||0,max));
   if(target===from)return;
   const tok=++reviewAnimationToken;
-  // Multi-move jumps (key moments) fast-forward at 4x; single steps play at normal speed.
-  const speed=Math.abs(target-from)>1?4:1,settleMs=MOTION.settle/speed;
+  // Key jumps fast-forward at 4x; single steps play at normal speed.
+  const speed=(fast||Math.abs(target-from)>1)?4:1,settleMs=MOTION.settle/speed;
   overlayCard.querySelectorAll('button,input').forEach(el=>el.disabled=true);
   clearHL();clearDice();
   // Position p shows the board before move p+1 (record[p].before); the final
@@ -3014,7 +3014,7 @@ async function showReplay(index){
   dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${dockPosText(i)}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};
   $('rNext').onclick=()=>{Snd.pick();animateReplayNavigation(i+1);};
-  $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey);}};
+  $('rPrevKey').onclick=()=>{if(prevKey!=null){Snd.pick();animateReplayNavigation(prevKey,true);}};$('rNextKey').onclick=()=>{if(nextKey!=null){Snd.pick();animateReplayNavigation(nextKey,true);}};
   $('rPlayed').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.moves);};
   $('rBest').onclick=()=>{Snd.pick();playReviewSequence(moveRow,moveRow.analysis.bestSeq);};
   const range=$('reviewRange');
