@@ -378,13 +378,35 @@ svg text{pointer-events:none;}
 }
 /* short landscape (phones / split view): compact rail, controls stay tappable */
 @media (orientation: landscape) and (max-height:520px){
-  #stage{padding:4px;}
+  #stage{padding:2px;
+    /* The 4:3 board letterboxes in a wide-short viewport; give the leftover
+       side bars a warm table tone so they read as playing surface, not void. */
+    background:linear-gradient(180deg,rgba(46,26,12,.55),rgba(26,14,7,.65));}
   #side{flex-basis:148px; padding:10px 8px;}
   .offBadge{width:46px; height:46px; font-size:19px; border-width:2px; margin-bottom:5px;}
   .pname{font-size:14px; margin:1px 0 3px;}
   .pline{font-size:12.5px; line-height:1.4;}
   .pbtn{padding:9px 0; font-size:13.5px; margin:5px 0;}
   #btnRoll{font-size:13.5px;}
+  /* Post-game popup: compact so it fits without scrolling on short screens. */
+  .overlay.outcomeMode{padding-top:8px;padding-bottom:8px;}
+  .outcomeCard{padding:12px 14px;max-width:520px;}
+  .outcomeCard>h2{font-size:14px;margin:0 0 4px;}
+  .resultBanner{padding:6px 10px;}
+  .resultCelebration{display:none;}
+  .resultTitle{font-size:17px;}
+  .resultScore{font-size:13px;margin-top:2px;}
+  .accuracyGrid{margin:6px 0;gap:6px;}
+  .accuracyPlayer{padding:5px 8px;}
+  .accuracyPlayer b{font-size:18px;margin-top:1px;}
+  .accuracyPlayer small{display:none;}
+  .accuracyNote{display:none;}
+  .qualityGrid{margin:0 0 6px;}
+  .qualityGrid div{padding:3px 8px;font-size:11px;}
+  .reviewMeta{margin:-1px 0 4px;font-size:11px;}
+  .reviewPrimary{padding:8px 10px;font-size:13px;margin:0 0 6px;}
+  .outcomeFooter{gap:6px;}
+  .outcomeFooter .pbtn{padding:8px 0;font-size:13px;}
 }
 /* ---------- portrait / narrow ---------- */
 @media (max-aspect-ratio: 1/1){
