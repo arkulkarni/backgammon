@@ -382,12 +382,22 @@ svg text{pointer-events:none;}
     /* The 4:3 board letterboxes in a wide-short viewport; give the leftover
        side bars a warm table tone so they read as playing surface, not void. */
     background:linear-gradient(180deg,rgba(46,26,12,.55),rgba(26,14,7,.65));}
-  #side{flex-basis:148px; padding:10px 8px;}
+  /* Let the rail absorb the leftover width (board is height-limited at
+     4:3), so there is no empty bar between board and rail or at the edge. */
+  #side{flex-basis:clamp(148px,calc(100vw - 100dvh * 4 / 3 - 16px),42vw); padding:10px 8px;}
   .offBadge{width:46px; height:46px; font-size:19px; border-width:2px; margin-bottom:5px;}
   .pname{font-size:14px; margin:1px 0 3px;}
   .pline{font-size:12.5px; line-height:1.4;}
   .pbtn{padding:9px 0; font-size:13.5px; margin:5px 0;}
   #btnRoll{font-size:13.5px;}
+  /* Setup card: compact so it fits without scrolling on short screens. */
+  .overlay.setupMode{padding-top:8px;padding-bottom:8px;}
+  .woodHead{padding:8px 12px 10px;row-gap:6px;}
+  .title3d{font-size:clamp(28px,6vw,38px);}
+  .headBtn{padding:8px 16px;font-size:13px;}
+  .setupBody{padding:12px 16px 14px;}
+  .setRow{margin-bottom:8px;}
+  .setupNote{margin-top:6px;font-size:12px;}
   /* Post-game popup: compact so it fits without scrolling on short screens. */
   .overlay.outcomeMode{padding-top:8px;padding-bottom:8px;}
   .outcomeCard{padding:12px 14px;max-width:520px;}
