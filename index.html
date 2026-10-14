@@ -377,52 +377,6 @@ svg text{pointer-events:none;}
   #side .pbtn{min-height:44px;margin:6px 0;padding:9px 0;}
 }
 /* short landscape (phones / split view): compact rail, controls stay tappable */
-@media (orientation: landscape) and (max-height:520px){
-  #stage{padding:2px;
-    /* The 4:3 board letterboxes in a wide-short viewport; give the leftover
-       side bars a warm table tone so they read as playing surface, not void. */
-    background:linear-gradient(180deg,rgba(46,26,12,.55),rgba(26,14,7,.65));}
-  /* Let the rail absorb the leftover width (board is height-limited at
-     4:3), so there is no empty bar between board and rail or at the edge. */
-  #side{flex-basis:clamp(148px,calc(100vw - 100dvh * 4 / 3 - 16px),42vw); padding:10px 8px;}
-  .offBadge{width:46px; height:46px; font-size:19px; border-width:2px; margin-bottom:5px;}
-  .pname{font-size:14px; margin:1px 0 3px;}
-  .pline{font-size:12.5px; line-height:1.4;}
-  .pbtn{padding:9px 0; font-size:13.5px; margin:5px 0;}
-  #btnRoll{font-size:13.5px;}
-  /* Setup card: compact so it fits without scrolling on short screens. */
-  .overlay.setupMode{padding-top:8px;padding-bottom:8px;}
-  .woodHead{padding:8px 12px 10px;row-gap:6px;}
-  .title3d{font-size:clamp(28px,6vw,38px);}
-  .headBtn{padding:8px 16px;font-size:13px;}
-  .setupBody{padding:12px 16px 14px;}
-  .setRow{margin-bottom:6px;}
-  .setLabel{margin-bottom:5px;font-size:12px;}
-  .colorChoice{min-height:40px;}
-  .tierPill{min-height:40px;padding:6px 6px;}
-  .setupNote{margin-top:6px;font-size:12px;}
-  /* The Firebase user bar carries inline styles; override them on short screens. */
-  #bgUserBar{margin:6px 0 0 !important;font-size:12px !important;line-height:1.4 !important;}
-  /* Post-game popup: compact so it fits without scrolling on short screens. */
-  .overlay.outcomeMode{padding-top:8px;padding-bottom:8px;}
-  .outcomeCard{padding:12px 14px;max-width:520px;}
-  .outcomeCard>h2{font-size:14px;margin:0 0 4px;}
-  .resultBanner{padding:6px 10px;}
-  .resultCelebration{display:none;}
-  .resultTitle{font-size:17px;}
-  .resultScore{font-size:13px;margin-top:2px;}
-  .accuracyGrid{margin:6px 0;gap:6px;}
-  .accuracyPlayer{padding:5px 8px;}
-  .accuracyPlayer b{font-size:18px;margin-top:1px;}
-  .accuracyPlayer small{display:none;}
-  .accuracyNote{display:none;}
-  .qualityGrid{margin:0 0 6px;}
-  .qualityGrid div{padding:3px 8px;font-size:11px;}
-  .reviewMeta{margin:-1px 0 4px;font-size:11px;}
-  .reviewPrimary{padding:8px 10px;font-size:13px;margin:0 0 6px;}
-  .outcomeFooter{gap:6px;}
-  .outcomeFooter .pbtn{padding:8px 0;font-size:13px;}
-}
 /* ---------- portrait / narrow ---------- */
 @media (max-aspect-ratio: 1/1){
   #app{flex-direction:column;}
@@ -548,6 +502,55 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
 #reviewTimelineDock .timelineTicks i.tick-opening,#reviewTimelineDock .timelineTicks i.tick-player,#reviewTimelineDock .timelineTicks i.tick-computer{width:7px;height:7px;margin:-1px 0 0 -3.5px}
 #reviewTimelineDock .timelineTicks i.tick-key{width:14px;height:14px;margin:-4px 0 0 -7px}
 .reviewDockPos{font-weight:750;color:#fff4df}
+/* Short-landscape compact mode (moved here so it wins the cascade over base styles). */
+@media (orientation: landscape) and (max-height:520px){
+  #stage{padding:2px;
+    /* The 4:3 board letterboxes in a wide-short viewport; give the leftover
+       side bars a warm table tone so they read as playing surface, not void. */
+    background:linear-gradient(180deg,rgba(46,26,12,.55),rgba(26,14,7,.65));}
+  /* Let the rail absorb the leftover width (board is height-limited at
+     4:3), so there is no empty bar between board and rail or at the edge. */
+  #side{flex-basis:clamp(148px,calc(100vw - 100dvh * 4 / 3 - 16px),42vw); padding:10px 8px;}
+  .offBadge{width:46px; height:46px; font-size:19px; border-width:2px; margin-bottom:5px;}
+  .pname{font-size:14px; margin:1px 0 3px;}
+  .pline{font-size:12.5px; line-height:1.4;}
+  .pbtn{padding:9px 0; font-size:13.5px; margin:5px 0;}
+  #btnRoll{font-size:13.5px;}
+  /* Setup card: compact so it fits without scrolling on short screens. */
+  .overlay.setupMode{padding-top:8px;padding-bottom:8px;}
+  .woodHead{padding:8px 12px 10px;row-gap:6px;}
+  .title3d{font-size:clamp(28px,6vw,38px);}
+  .headBtn{padding:8px 16px;font-size:13px;}
+  .setupBody{padding:12px 16px 14px;}
+  .setRow{margin-bottom:6px;}
+  .setLabel{margin-bottom:5px;font-size:12px;}
+  .colorChoice{min-height:40px;}
+  .tierPill{min-height:40px;padding:6px 6px;}
+  .setupNote{margin-top:6px;font-size:12px;}
+  /* The Firebase user bar carries inline styles; override them on short screens. */
+  #bgUserBar{margin:6px 0 0 !important;font-size:12px !important;line-height:1.4 !important;}
+  /* Post-game popup: compact so it fits without scrolling on short screens. */
+  .overlay.outcomeMode{padding-top:6px;padding-bottom:6px;}
+  .overlay.outcomeMode .outcomeCard{max-height:calc(100dvh - 12px);overflow-y:auto;}
+  .outcomeCard{padding:10px 12px;max-width:520px;}
+  .outcomeCard>h2{font-size:13px;margin:0 0 3px;}
+  .resultBanner{padding:5px 8px;}
+  .resultCelebration{display:none;}
+  .resultTitle{font-size:15px;}
+  .resultScore{font-size:12px;margin-top:2px;}
+  .accuracyGrid{margin:5px 0;gap:5px;}
+  .accuracyPlayer{padding:4px 7px;font-size:11px;}
+  .accuracyPlayer b{font-size:16px;margin-top:1px;}
+  .accuracyPlayer small{display:none;}
+  .accuracyNote{display:none;}
+  .qualityGrid{margin:0 0 5px;}
+  .qualityGrid div{padding:2px 6px;font-size:10px;}
+  .qualityGrid .qualityHead{font-size:10px;}
+  .reviewMeta{display:none;}
+  .reviewPrimary{padding:7px 10px;font-size:12px;margin:0 0 5px;}
+  .outcomeFooter{gap:5px;}
+  .outcomeFooter .pbtn{padding:7px 0;font-size:12px;margin:0;}
+}
 </style>
 <link rel="manifest" href="manifest.json">
 <meta name="mobile-web-app-capable" content="yes">
