@@ -2059,11 +2059,67 @@ function showPastGames(returnTo){
   $('pgBack').onclick=()=>{Snd.btn();backToSetup?showSetup():openMenu();};
   overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
+// One Monte Carlo playout from a position: both sides play greedy
+// (most borne off, then fewest pips) with random dice. Returns the winner
+// and the gammon/backgammon multiplier, or null if it doesn't finish.
+function playoutResign(startState,startTurn){
+  let st=cloneState(startState),turn=startTurn;
+  for(let guard=0;guard<300;guard++){
+    if(hasWon(st,turn))return{winner:turn,info:gammonInfo(st,turn)};
+    const d1=1+Math.floor(Math.random()*6),d2=1+Math.floor(Math.random()*6);
+    const dice=(d1===d2)?[d1,d1,d1,d1]:[d1,d2];
+    const orders=(dice.length===2)?[[0,1],[1,0]]:[[0,1,2,3]];
+    let bestSt=null,bestUsed=-1;
+    for(const order of orders){
+      let cur=st,used=0;
+      for(const di of order){
+        const moves=singleMoves(cur,turn,dice[di]);
+        if(!moves.length)continue;
+        let bestM=null,bestScore=-Infinity;
+        for(const m of moves){
+          const after=applyMove(cur,m,turn);
+          const score=(after.off[turn]-cur.off[turn])*1000-pipCount(after,turn)+Math.random()*0.5;
+          if(score>bestScore){bestScore=score;bestM=m;}
+        }
+        cur=applyMove(cur,bestM,turn);used++;
+      }
+      if(used>bestUsed){bestUsed=used;bestSt=cur;}
+      if(used===dice.length)break;
+    }
+    st=bestSt||st;
+    if(hasWon(st,turn))return{winner:turn,info:gammonInfo(st,turn)};
+    turn=other(turn);
+  }
+  return null;
+}
+function resignProbsMC(trials){
+  // Monte Carlo: play out random games from the current position and count
+  // how often the human loses by single/gammon/backgammon. Accurate for
+  // bearoff/closed-board positions where the neural net's gammon/backgammon
+  // outputs collapse to ~0.
+  const human=GAME.sideHuman,opp=other(human);
+  const startTurn=(GAME.phase==='ai'||GAME.phase==='tutor')?opp:human;
+  let single=0,gam=0,back=0,done=0;
+  for(let t=0;t<trials;t++){
+    const res=playoutResign(GAME.state,startTurn);
+    if(!res)continue;
+    done++;
+    if(res.winner===opp){
+      if(res.info.mult===1)single++;
+      else if(res.info.mult===2)gam++;
+      else back++;
+    }
+  }
+  if(!done)return null;
+  return [single/done,gam/done,back/done];
+}
 function resignProbs(){
   // [P(human loses single), P(loses gammon), P(loses backgammon)], or null if unscorable.
-  // evaluate() scores from the index-1 player's perspective, so pass the OPPONENT
-  // to get their win breakdown (= the human's loss breakdown). Those gammon outputs
-  // are cumulative (winGammon includes backgammon), so subtract for exclusive probs.
+  // Monte Carlo first (accurate gammon/backgammon); neural net as fallback.
+  try{const mc=resignProbsMC(120);if(mc)return mc;}catch(e){}
+  // Neural-net fallback: evaluate() scores from the index-1 player's
+  // perspective, so pass the OPPONENT to get their win breakdown (=
+  // the human's loss breakdown). Gammon outputs are cumulative, so subtract.
   try{
     const g=window.GNUbgEvaluator;
     if(!(g&&g.ready))return null;
