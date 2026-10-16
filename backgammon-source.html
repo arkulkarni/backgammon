@@ -437,7 +437,8 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
 .reviewAnalysis summary::-webkit-details-marker{display:none;}
 .reviewAnalysis summary::after{content:'›';font-size:24px;font-weight:400;line-height:1;color:#c9b18e;transform:rotate(90deg);transition:transform .16s ease;}
 .reviewAnalysis[open] summary::after{transform:rotate(-90deg);}
-.reviewAnalysisSummary{color:#a99576;font-size:10px;font-weight:650;letter-spacing:0;text-align:right;}
+.reviewLegend{margin:7px 2px 1px;color:#a99576;font-size:10.5px;line-height:1.55;}
+.reviewLegend b{color:#d8c5a6;}
 .reviewMetrics{display:grid;grid-template-columns:1fr;gap:0;padding:0 0 10px;border:0;}
 .reviewMetric{display:flex;align-items:center;justify-content:space-between;min-height:43px;padding:7px 10px;border-radius:0;background:rgba(23,16,11,.54);color:#cbb99c;font-size:10px;letter-spacing:.055em;text-align:left;}
 .reviewMetric+.reviewMetric{border-top:1px solid rgba(255,231,194,.08);}
@@ -3105,6 +3106,28 @@ function syncReviewChrome(pos){
       const el=ticksWrap.children[pos];if(el)el.classList.add('tick-current');}}
   GAME.replayIndex=pos;
 }
+function sameBoardPosition(a,b){
+  for(let i=0;i<24;i++){
+    const pa=a.points[i],pb=b.points[i];
+    if(pa.length!==pb.length)return false;
+    let wa=0,ba=0,wb=0,bb=0;
+    for(const id of pa){if(id[0]==='w')wa++;else ba++;}
+    for(const id of pb){if(id[0]==='w')wb++;else bb++;}
+    if(wa!==wb||ba!==bb)return false;
+  }
+  return a.bar.w.length===b.bar.w.length&&a.bar.b.length===b.bar.b.length
+      &&a.off.w===b.off.w&&a.off.b===b.off.b;
+}
+// True when the engine's recommended move reaches the same position as the
+// move actually played — replaying it would show nothing new, so the
+// "Recommended move" button is disabled.
+function recommendedSameAsPlayed(row){
+  if(!row||!row.analysis||!row.analysis.bestSeq||!row.analysis.bestSeq.length)return false;
+  if(!row.moves||!row.moves.length)return false;
+  const afterPlayed=applySeq(row.before,row.moves,row.side);
+  const afterBest=applySeq(row.before,row.analysis.bestSeq,row.side);
+  return sameBoardPosition(afterPlayed,afterBest);
+}
 async function showReplay(index){
   if(!GAME.record.length){toast('No moves to review');return;}
   await ensureGNUReady('Move review');
@@ -3133,8 +3156,8 @@ async function showReplay(index){
   const progress=max?i/max*100:0;
   const playedLabel=finalPos?'Your move':(moveRow.side!==GAME.sideHuman?"Computer's move":"Your move");
   const canReplay=!finalPos&&moveRow.moves.length>0;
-  const bestOk=!finalPos&&moveRow.analysis&&moveRow.analysis.bestSeq.length>0;
-  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}" id="rvActor">${actorLabel}</em><b id="rvTitle">${title}</b><span id="rvSubtitle">${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span><span class="reviewAnalysisSummary">Win chance \u00b7 equity \u00b7 cost</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b id="rvWin">${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b id="rvEquity">${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b id="rvCost">${finalPos?'\u2014':cost.toFixed(3)}</b></div></div></details><div class="reviewNavBlock"><div class="reviewCounter" id="rvCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
+  const bestOk=!finalPos&&moveRow.analysis&&moveRow.analysis.bestSeq.length>0&&!recommendedSameAsPlayed(moveRow);
+  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}" id="rvActor">${actorLabel}</em><b id="rvTitle">${title}</b><span id="rvSubtitle">${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b id="rvWin">${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b id="rvEquity">${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b id="rvCost">${finalPos?'\u2014':cost.toFixed(3)}</b></div></div><div class="reviewLegend"><b>Win %</b> — chance of winning after this move. <b>Equity</b> — expected points (a gammon counts 2); negative means losing. <b>Blunder cost</b> — equity this move gave up versus the best move (0.12 or more is flagged a blunder).</div></details><div class="reviewNavBlock"><div class="reviewCounter" id="rvCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
   const dock=$('reviewTimelineDock');
   dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${vm.dockText}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};
