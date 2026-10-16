@@ -439,6 +439,12 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
 .reviewAnalysis[open] summary::after{transform:rotate(-90deg);}
 .reviewLegend{margin:7px 2px 1px;color:#a99576;font-size:10.5px;line-height:1.55;}
 .reviewLegend b{color:#d8c5a6;}
+.reviewCompare{display:grid;grid-template-columns:minmax(0,1.35fr) repeat(3,minmax(0,1fr));margin:0 0 4px;border-radius:9px;overflow:hidden;background:rgba(23,16,11,.54);}
+.reviewCompare>div{padding:6px 7px;font-size:10px;}
+.rcHead{color:#a99576;font-size:9px;font-weight:800;letter-spacing:.05em;text-align:right;white-space:nowrap;}
+.rcHead:first-child{text-align:left;}
+.rcRowLabel{color:#cbb99c;letter-spacing:.02em;align-self:center;white-space:nowrap;}
+.rcVal{text-align:right;color:#fff4df;font-weight:700;font-variant-numeric:tabular-nums;white-space:nowrap;}
 .reviewMetrics{display:grid;grid-template-columns:1fr;gap:0;padding:0 0 10px;border:0;}
 .reviewMetric{display:flex;align-items:center;justify-content:space-between;min-height:43px;padding:7px 10px;border-radius:0;background:rgba(23,16,11,.54);color:#cbb99c;font-size:10px;letter-spacing:.055em;text-align:left;}
 .reviewMetric+.reviewMetric{border-top:1px solid rgba(255,231,194,.08);}
@@ -1111,12 +1117,16 @@ function toGNUBoard(st,onRoll){
   return out;
 }
 function positionEval(st,perspective){
-  if(hasWon(st,perspective)){const m=gammonInfo(st,perspective).mult;return{equity:m,win:1,phase:'over',engine:true};}
-  if(hasWon(st,other(perspective))){const m=gammonInfo(st,other(perspective)).mult;return{equity:-m,win:0,phase:'over',engine:true};}
+  if(hasWon(st,perspective)){const m=gammonInfo(st,perspective).mult;return{equity:m,win:1,phase:'over',engine:true,winGammon:m>=2?1:0,winBackgammon:m>=3?1:0,loseGammon:0,loseBackgammon:0};}
+  if(hasWon(st,other(perspective))){const m=gammonInfo(st,other(perspective)).mult;return{equity:-m,win:0,phase:'over',engine:true,winGammon:0,winBackgammon:0,loseGammon:m>=2?1:0,loseBackgammon:m>=3?1:0};}
   if(!(window.GNUbgEvaluator&&GNUbgEvaluator.ready))throw new Error('GNU evaluator not ready');
   const next=other(perspective),r=GNUbgEvaluator.evaluate(toGNUBoard(st,next));
   if(!r)throw new Error('GNU evaluator could not score this position');
-  return{equity:-r.equity,win:1-r.win,phase:r.phase,engine:true};
+  // r is scored from the opponent's perspective; flip to `perspective`.
+  // The engine's gammon outputs are cumulative (winGammon includes backgammon).
+  return{equity:-r.equity,win:1-r.win,phase:r.phase,engine:true,
+    winGammon:r.loseGammon||0,winBackgammon:r.loseBackgammon||0,
+    loseGammon:r.winGammon||0,loseBackgammon:r.winBackgammon||0};
 }
 function moveNotation(seq,color){
   if(!seq||!seq.length)return'No move';
@@ -1126,12 +1136,18 @@ function moveNotation(seq,color){
 function sequenceResult(start,seq,side){return applySeq(start,seq,side);}
 function rankTurn(start,dice,side,played){
   const all=legalSequences(start,side,dice),pool=all.map(seq=>({seq,st:sequenceResult(start,seq,side)}));
-  for(const c of pool){const r=positionEval(c.st,side);c.value=r.equity;c.win=r.win;}
+  for(const c of pool){const r=positionEval(c.st,side);c.value=r.equity;c.win=r.win;c.wg=r.winGammon;c.wbg=r.winBackgammon;c.lg=r.loseGammon;c.lbg=r.loseBackgammon;}
   pool.sort((a,b)=>b.value-a.value);
   const best=pool[0]||null,runner=pool[1]||null;
   const playedSt=sequenceResult(start,played||[],side),pr=positionEval(playedSt,side);
   const bestEquity=best?best.value:pr.equity,cost=Math.max(0,bestEquity-pr.equity);
-  return{bestSeq:best?best.seq:[],bestEquity,playedEquity:pr.equity,playedWin:pr.win,cost,engine:pr.engine,optionCount:pool.length,runnerUpSeq:runner?runner.seq:[],runnerUpEquity:runner?runner.value:pr.equity,bestMargin:runner?Math.max(0,bestEquity-runner.value):0};
+  return{bestSeq:best?best.seq:[],bestEquity,bestWin:best?best.win:pr.win,
+    bestWinGammon:best?best.wg:pr.winGammon,bestWinBackgammon:best?best.wbg:pr.winBackgammon,
+    bestLoseGammon:best?best.lg:pr.loseGammon,bestLoseBackgammon:best?best.lbg:pr.loseBackgammon,
+    playedEquity:pr.equity,playedWin:pr.win,
+    playedWinGammon:pr.winGammon,playedWinBackgammon:pr.winBackgammon,
+    playedLoseGammon:pr.loseGammon,playedLoseBackgammon:pr.loseBackgammon,
+    cost,engine:pr.engine,optionCount:pool.length,runnerUpSeq:runner?runner.seq:[],runnerUpEquity:runner?runner.value:pr.equity,bestMargin:runner?Math.max(0,bestEquity-runner.value):0};
 }
 function startTurnRecord(side,dice){GAME.turnStart={state:cloneState(GAME.state),dice:dice.slice(),side};GAME.turnMoves=[];GAME.turnRecorded=false;}
 function recordTurn(side,dice,moves,before,after){
@@ -2946,6 +2962,7 @@ function keyMoments(){
   return out;
 }
 function eqText(n){return(n>=0?'+':'')+n.toFixed(3);}
+function pctDiffText(d){return(d>=0?'+':'')+d.toFixed(1)+'%';}
 let reviewAnimationToken=0;
 function reviewNavIcon(kind){
   if(kind==='previous')return'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
@@ -3060,7 +3077,8 @@ function reviewVM(pos){
   const moments=keyMoments(),keySet=new Set(moments.map(m=>m.recordIndex));
   const moveRow=finalPos?null:GAME.record[pos];
   const isKey=!finalPos&&keySet.has(pos);
-  let title,subtitle,actorClass,actorLabel,win,equity,cost=0;
+  let title,subtitle,actorClass,actorLabel,win,equity,cost=0,bestWin=null,bestEquity=null;
+  let pWG=null,pWBG=null,pLG=null,pLBG=null,bWG=null,bWBG=null,bLG=null,bLBG=null;
   if(finalPos){
     actorClass='opening';actorLabel='FINAL';title='Final position';
     const r=GAME.lastResult;
@@ -3075,6 +3093,13 @@ function reviewVM(pos){
     title=`${tag}Move ${pos+1} \u00b7 ${escHtml(name)}`;
     subtitle=escHtml(moveNotation(moveRow.moves,moveRow.side));
     win=a.playedWin;equity=a.playedEquity;cost=a.cost;
+    bestWin=(a.bestWin!=null)?a.bestWin:a.playedWin;
+    bestEquity=(a.bestEquity!=null)?a.bestEquity:a.playedEquity;
+    pWG=a.playedWinGammon;pWBG=a.playedWinBackgammon;pLG=a.playedLoseGammon;pLBG=a.playedLoseBackgammon;
+    bWG=(a.bestWinGammon!=null)?a.bestWinGammon:pWG;
+    bWBG=(a.bestWinBackgammon!=null)?a.bestWinBackgammon:pWBG;
+    bLG=(a.bestLoseGammon!=null)?a.bestLoseGammon:pLG;
+    bLBG=(a.bestLoseBackgammon!=null)?a.bestLoseBackgammon:pLBG;
   }
   const dockText=finalPos?('Final \u00b7 Move '+max+' of '+max):(()=>{
     const side=GAME.record[pos].side===GAME.sideHuman?'You':'Computer';
@@ -3082,6 +3107,11 @@ function reviewVM(pos){
   })();
   return {pos,max,finalPos,isKey,title,subtitle,actorClass,actorLabel,
     pct:Math.max(0,Math.min(100,win*100)),equity,cost,
+    bestPct:bestWin==null?null:Math.max(0,Math.min(100,bestWin*100)),bestEquity,
+    pWG:pWG==null?null:pWG*100,pWBG:pWBG==null?null:pWBG*100,
+    pLG:pLG==null?null:pLG*100,pLBG:pLBG==null?null:pLBG*100,
+    bWG:bWG==null?null:bWG*100,bWBG:bWBG==null?null:bWBG*100,
+    bLG:bLG==null?null:bLG*100,bLBG:bLBG==null?null:bLBG*100,
     counterText:finalPos?('Final \u00b7 Move '+max+' of '+max):('Move '+(pos+1)+' of '+max),
     dockText};
 }
@@ -3093,9 +3123,19 @@ function syncReviewChrome(pos){
   const actor=$('rvActor');if(actor){actor.className='reviewActor '+vm.actorClass;actor.textContent=vm.actorLabel;}
   const title=$('rvTitle');if(title)title.innerHTML=vm.title;
   const sub=$('rvSubtitle');if(sub)sub.innerHTML=vm.subtitle;
-  const w=$('rvWin');if(w)w.textContent=vm.pct.toFixed(1)+'%';
-  const e=$('rvEquity');if(e)e.textContent=eqText(vm.equity);
-  const c=$('rvCost');if(c)c.textContent=vm.finalPos?'\u2014':vm.cost.toFixed(3);
+  const wy=$('rvWinYou');if(wy)wy.textContent=vm.pct.toFixed(1)+'%';
+  const wb=$('rvWinBest');if(wb)wb.textContent=vm.finalPos?'\u2014':vm.bestPct.toFixed(1)+'%';
+  const wd=$('rvWinDiff');if(wd)wd.textContent=vm.finalPos?'\u2014':pctDiffText(vm.bestPct-vm.pct);
+  const ey=$('rvEqYou');if(ey)ey.textContent=eqText(vm.equity);
+  const eb=$('rvEqBest');if(eb)eb.textContent=vm.finalPos?'\u2014':eqText(vm.bestEquity);
+  const ed=$('rvEqDiff');if(ed)ed.textContent=vm.finalPos?'\u2014':eqText(vm.bestEquity-vm.equity);
+  const setG=(yid,bid,did,yv,bv)=>{const y=$(yid);if(y)y.textContent=yv==null?'\u2014':yv.toFixed(1)+'%';
+    const b=$(bid);if(b)b.textContent=vm.finalPos||bv==null?'\u2014':bv.toFixed(1)+'%';
+    const d=$(did);if(d)d.textContent=vm.finalPos||yv==null||bv==null?'\u2014':pctDiffText(bv-yv);};
+  setG('rvWgYou','rvWgBest','rvWgDiff',vm.pWG,vm.bWG);
+  setG('rvWbgYou','rvWbgBest','rvWbgDiff',vm.pWBG,vm.bWBG);
+  setG('rvLgYou','rvLgBest','rvLgDiff',vm.pLG,vm.bLG);
+  setG('rvLbgYou','rvLbgBest','rvLbgDiff',vm.pLBG,vm.bLBG);
   const counter=$('rvCounter');if(counter)counter.textContent=vm.counterText;
   const dockPos=$('reviewDockPos');if(dockPos)dockPos.textContent=vm.dockText;
   const range=$('reviewRange');
@@ -3137,7 +3177,7 @@ async function showReplay(index){
   const max=GAME.record.length,i=Math.max(0,Math.min(Number(index)||0,max));
   GAME.replayIndex=i;
   const vm=reviewVM(i);
-  const {title,subtitle,actorClass,actorLabel,pct,equity,cost,finalPos,counterText,dockText}=vm;
+  const {title,subtitle,actorClass,actorLabel,pct,equity,cost,finalPos,counterText,dockText,bestPct,bestEquity,pWG,pWBG,pLG,pLBG,bWG,bWBG,bLG,bLBG}=vm;
   const moments=keyMoments();
   const keyIndexes=moments.map(m=>m.recordIndex),prevKey=keyIndexes.filter(n=>n<i).pop(),nextKey=keyIndexes.find(n=>n>i);
   const keySet=new Set(keyIndexes);
@@ -3155,9 +3195,10 @@ async function showReplay(index){
   }
   const progress=max?i/max*100:0;
   const playedLabel=finalPos?'Your move':(moveRow.side!==GAME.sideHuman?"Computer's move":"Your move");
+  const playedColLabel=finalPos?'Result':(moveRow.side===GAME.sideHuman?'Your move':'Computer');
   const canReplay=!finalPos&&moveRow.moves.length>0;
   const bestOk=!finalPos&&moveRow.analysis&&moveRow.analysis.bestSeq.length>0&&!recommendedSameAsPlayed(moveRow);
-  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}" id="rvActor">${actorLabel}</em><b id="rvTitle">${title}</b><span id="rvSubtitle">${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span></summary><div class="reviewMetrics"><div class="reviewMetric">WIN %<b id="rvWin">${pct.toFixed(1)}%</b></div><div class="reviewMetric">EQUITY<b id="rvEquity">${eqText(equity)}</b></div><div class="reviewMetric">BLUNDER COST<b id="rvCost">${finalPos?'\u2014':cost.toFixed(3)}</b></div></div><div class="reviewLegend"><b>Win %</b> — chance of winning after this move. <b>Equity</b> — expected points (a gammon counts 2); negative means losing. <b>Blunder cost</b> — equity this move gave up versus the best move (0.12 or more is flagged a blunder).</div></details><div class="reviewNavBlock"><div class="reviewCounter" id="rvCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
+  showOverlay(`<div class="reviewHudTop"><div class="reviewMoveInfo"><div class="reviewStep"><em class="reviewActor ${actorClass}" id="rvActor">${actorLabel}</em><b id="rvTitle">${title}</b><span id="rvSubtitle">${subtitle}</span></div></div></div><div class="reviewActions"><button class="pbtn" id="rPlayed" ${canReplay?'':'disabled'}>${playedLabel}</button><button class="pbtn recommended" id="rBest" ${bestOk?'':'disabled'}>Recommended move</button></div><details class="reviewAnalysis" open><summary><span>ANALYSIS</span></summary><div class="reviewCompare"><div class="rcHead"></div><div class="rcHead">${playedColLabel}</div><div class="rcHead">Recommended</div><div class="rcHead">Diff</div><div class="rcRowLabel">Equity</div><div class="rcVal" id="rvEqYou">${eqText(equity)}</div><div class="rcVal" id="rvEqBest">${finalPos?'—':eqText(bestEquity)}</div><div class="rcVal" id="rvEqDiff">${finalPos?'—':eqText(bestEquity-equity)}</div><div class="rcRowLabel">Win</div><div class="rcVal" id="rvWinYou">${pct.toFixed(1)+'%'}</div><div class="rcVal" id="rvWinBest">${finalPos?'—':bestPct.toFixed(1)+'%'}</div><div class="rcVal" id="rvWinDiff">${finalPos?'—':pctDiffText(bestPct-pct)}</div><div class="rcRowLabel">Win gammon</div><div class="rcVal" id="rvWgYou">${pWG.toFixed(1)+'%'}</div><div class="rcVal" id="rvWgBest">${finalPos?'—':bWG.toFixed(1)+'%'}</div><div class="rcVal" id="rvWgDiff">${finalPos?'—':pctDiffText(bWG-pWG)}</div><div class="rcRowLabel">Win backgammon</div><div class="rcVal" id="rvWbgYou">${pWBG.toFixed(1)+'%'}</div><div class="rcVal" id="rvWbgBest">${finalPos?'—':bWBG.toFixed(1)+'%'}</div><div class="rcVal" id="rvWbgDiff">${finalPos?'—':pctDiffText(bWBG-pWBG)}</div><div class="rcRowLabel">Lose gammon</div><div class="rcVal" id="rvLgYou">${pLG.toFixed(1)+'%'}</div><div class="rcVal" id="rvLgBest">${finalPos?'—':bLG.toFixed(1)+'%'}</div><div class="rcVal" id="rvLgDiff">${finalPos?'—':pctDiffText(bLG-pLG)}</div><div class="rcRowLabel">Lose backgammon</div><div class="rcVal" id="rvLbgYou">${pLBG.toFixed(1)+'%'}</div><div class="rcVal" id="rvLbgBest">${finalPos?'—':bLBG.toFixed(1)+'%'}</div><div class="rcVal" id="rvLbgDiff">${finalPos?'—':pctDiffText(bLBG-pLBG)}</div></div><div class="reviewLegend">Rows use the engine's own terms; gammon figures include backgammons. <b>Diff</b> is Recommended − played. <b>Equity</b> is what the engine optimizes — the move with the highest expected points.</div></details><div class="reviewNavBlock"><div class="reviewCounter" id="rvCounter">${counterText}</div><div class="reviewNav"><button class="pbtn" id="rPrev" ${i===0?'disabled':''} aria-label="Go back to previous move" title="Previous move">${reviewNavIcon('previous')}<span class="reviewNavLabel">Back</span></button><button class="pbtn keyJump replaySecondary" id="rPrevKey" ${prevKey==null?'disabled':''} aria-label="Previous key move">Previous key move</button><button class="pbtn keyJump replaySecondary" id="rNextKey" ${nextKey==null?'disabled':''} aria-label="Next key move">Next key move</button><button class="pbtn" id="rNext" ${i===max?'disabled':''} aria-label="Go forward to next move" title="Next move">${reviewNavIcon('next')}<span class="reviewNavLabel">Forward</span></button></div></div><button class="pbtn reviewMainMenu" id="rMainMenu">Main Menu</button>`,'reviewHud');
   const dock=$('reviewTimelineDock');
   dock.innerHTML=`<div class="reviewTimeline"><div class="reviewTimelineMeta"><span>OPENING</span><span class="reviewDockPos" id="reviewDockPos">${vm.dockText}</span><span>FINISH</span></div><div class="timelineWrap"><input class="reviewRange" id="reviewRange" type="range" min="0" max="${max}" value="${i}" step="1" style="--progress:${progress}%" aria-label="Move timeline"><div class="timelineTicks" aria-hidden="true">${ticks}</div></div><div class="timelineLegend" aria-hidden="true"><span><i class="lg-you"></i>You</span><span><i class="lg-comp"></i>Computer</span><span><i class="lg-key"></i>Key moment (${moments.length})</span></div></div>`;
   $('rPrev').onclick=()=>{Snd.pick();animateReplayNavigation(i-1);};
