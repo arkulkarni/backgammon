@@ -1998,10 +1998,7 @@ async function ensureGNUReady(purpose){
 }
 function analyzeMissingRecords(){
   if(!(window.GNUbgEvaluator&&GNUbgEvaluator.ready))throw new Error('GNU evaluator not ready');
-  for(const row of GAME.record){
-    const a=row.analysis;
-    if(!a||a.playedWin==null||a.bestWin==null||a.playedWinGammon==null)row.analysis=rankTurn(row.before,row.dice,row.side,row.moves);
-  }
+  for(const row of GAME.record)if(!row.analysis)row.analysis=rankTurn(row.before,row.dice,row.side,row.moves);
 }
 function colorName(c){return c==='w'?'White':'Black';}
 /* ---------- setup screen ---------- */
