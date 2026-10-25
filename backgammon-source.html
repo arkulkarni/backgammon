@@ -2347,6 +2347,15 @@ async function rolloff(tok){
 }
 function rollPair(){return[1+Math.floor(Math.random()*6),1+Math.floor(Math.random()*6)];}
 function playableDice(pair){return pair[0]===pair[1]?[pair[0],pair[0],pair[0],pair[0]]:pair.slice();}
+// True when `side` cannot move no matter what is rolled: checkers on the bar
+// and all six entry points blocked with two or more opponent checkers.
+// White enters into black's home (18-23); black enters into white's home (0-5).
+function isShutOut(s,side){
+  if(!s||!s.bar[side].length)return false;
+  const opp=other(side);
+  const entries=side==='w'?[18,19,20,21,22,23]:[0,1,2,3,4,5];
+  return entries.every(i=>{const p=s.points[i];return p.length>=2&&p[0][0]===opp;});
+}
 function humanTurn(){
   // Every route into the player's roll phase comes through here: a completed
   // computer turn, either no-move acknowledgement, and undoing a computer
@@ -2357,6 +2366,11 @@ function humanTurn(){
   GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;
   clearDice();clearHL();
   GAME.phase='preroll';syncUI();
+  // Shut out regardless of the roll: don't make the player roll needlessly.
+  if(isShutOut(GAME.state,GAME.sideHuman)){
+    startTurnRecord(GAME.sideHuman,[]);
+    showHumanNoMoveDialog();
+  }
 }
 async function onRoll(){
   if(GAME.phase!=='preroll')return;
