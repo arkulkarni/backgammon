@@ -2266,28 +2266,77 @@ function updatePanel(){
   $('offOpp').textContent=st?st.off[GAME.sideAI]:0;
   $('badgeYou').setAttribute('aria-label',offYou+' checker'+(offYou===1?'':'s')+' taken off');
 }
-function bearOffChoice(){
-  if(GAME.phase!=='moving')return null;
-  const selected=GAME.destsNow.find(d=>d.to==='off');
-  if(selected)return selected;
-  // Derive the available bear-off from the current position and remaining dice
-  // instead of trusting a sequence cache that may still describe the prior
-  // position for a frame after an animated move or Undo.
+// Unique single-checker routes ending in a bear-off, derived from the current
+// position and remaining dice instead of a sequence cache that may still
+// describe the prior position for a frame after an animated move or Undo.
+// A route is one checker's consecutive moves, including a legal two-die or
+// doubles route whose final step bears it off.
+function bearOffRoutes(){
   const currentSeqs=GAME.state?legalSequences(GAME.state,GAME.sideHuman,GAME.remaining):[];
+  const seen=new Set(),routes=[];
   for(const seq of currentSeqs){
     if(!seq.length)continue;
-    // Prefer a complete consecutive route for one checker, including a legal
-    // two-die or doubles route whose final step bears it off.
     const moves=[];
     let expectedFrom=seq[0].from;
     for(const move of seq){
       if(move.from!==expectedFrom)break;
       moves.push(move);
-      if(move.to==='off')return Object.assign({},move,{moves:moves.slice(),compound:moves.length>1});
+      if(move.to==='off'){
+        const key=moves.map(m=>m.from+'|'+m.die+'|'+m.to).join(',');
+        if(!seen.has(key)){seen.add(key);routes.push(moves.slice());}
+        break;
+      }
       expectedFrom=move.to;
     }
   }
-  return null;
+  return routes;
+}
+// Rank bear-off routes for the badge tap. The best completed turn wins: with
+// the engine, each route is scored by the equity of the best completion of
+// the remaining dice, so "bear off two, one die each" beats "bear off one
+// with both dice" and the order that frees the most later bear-offs wins.
+// Without the engine, waste as few dice as possible, then take the highest
+// checker. If engine scoring fails midway, all routes fall back together.
+function rankBearOffRoutes(routes){
+  let useEngine=!!(window.GNUbgEvaluator&&GNUbgEvaluator.ready);
+  const scored=[];
+  for(const moves of routes){
+    const mid=sequenceResult(GAME.state,moves,GAME.sideHuman);
+    const rem=GAME.remaining.slice();
+    for(const m of moves){const i=rem.indexOf(m.die);if(i>=0)rem.splice(i,1);}
+    let eq=0;
+    if(useEngine){
+      try{
+        const completions=rem.length?legalSequences(mid,GAME.sideHuman,rem):[[]];
+        eq=-Infinity;
+        for(const comp of completions){
+          const fin=sequenceResult(mid,comp,GAME.sideHuman);
+          const v=positionEval(fin,GAME.sideHuman).equity;
+          if(v>eq)eq=v;
+        }
+      }catch(e){useEngine=false;}
+    }
+    const pipDist=GAME.sideHuman==='w'?moves[0].from+1:24-moves[0].from;
+    scored.push({moves,eq,diceUsed:moves.length,pipDist});
+  }
+  if(!useEngine)for(const s of scored)s.eq=0;
+  let best=null;
+  for(const s of scored){
+    if(!best)best=s;
+    else if(s.eq>best.eq||(s.eq===best.eq&&(s.diceUsed<best.diceUsed||(s.diceUsed===best.diceUsed&&s.pipDist>best.pipDist))))best=s;
+  }
+  return best?best.moves:null;
+}
+function bearOffChoice(ranked){
+  if(GAME.phase!=='moving')return null;
+  const selected=GAME.destsNow.find(d=>d.to==='off');
+  if(selected)return selected;
+  const routes=bearOffRoutes();
+  if(!routes.length)return null;
+  const moves=ranked?rankBearOffRoutes(routes):routes[0];
+  if(!moves)return null;
+  const last=moves[moves.length-1];
+  return Object.assign({},last,{moves:moves.slice(),compound:moves.length>1});
 }
 function updateTakeOffControl(){
   // The score badge is the single bear-off control. bearOffChoice searches the
@@ -2700,7 +2749,7 @@ async function onPointTap(idx){
   if(GAME.selected!=null){GAME.selected=null;GAME.destsNow=[];markSources(GAME.sourcesNow,GAME.state);}
 }
 async function onOffTap(){
-  const choice=bearOffChoice();
+  const choice=bearOffChoice(true);
   if(!choice)return;
   GAME.selected=choice.moves?.[0]?.from??choice.from;
   GAME.destsNow=[choice];
