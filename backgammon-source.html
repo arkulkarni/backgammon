@@ -2055,7 +2055,9 @@ function showSetup(){
        <div class="pillRow difficultyRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}"><span class="tierName">${tier.label}</span></button>`).join('')}</div>
      </div>
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
+     ${winStatsHtml()}
    </div>`,'card setupCard');
+  wireWinStatsReset('setup');
   $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
   $('sStart').onclick=()=>{
     Snd.opening();
@@ -2186,9 +2188,9 @@ function winStatsHtml(){
   return '<div class="statsCard" id="winStatsCard"><div class="statsHead"><span>WIN %</span><span class="statsSince">Since '+escHtml(winStatsSinceLabel())+'</span><button class="statsReset" id="winStatsReset" type="button">RESET</button></div>'
     +WIN_STATS_DIFFS.map(winStatsRow).join('')+'</div>';
 }
-function wireWinStatsReset(){
+function wireWinStatsReset(returnTo){
   const b=$('winStatsReset');
-  if(b)b.onclick=()=>{Snd.btn();confirmResetWinStats();};
+  if(b)b.onclick=()=>{Snd.btn();confirmResetWinStats(returnTo);};
 }
 function refreshWinStatsCard(){
   const el=document.getElementById('winStatsCard');
@@ -2198,10 +2200,11 @@ function refreshWinStatsCard(){
   if(fresh)el.replaceWith(fresh);
   wireWinStatsReset();
 }
-function confirmResetWinStats(){
+function confirmResetWinStats(returnTo){
+  const goBack=()=>{if(returnTo==='setup')showSetup();else openMenu();};
   openDlg('Reset win stats?','This clears all wins and losses on every device and starts a new tracking window from today.',[
-    {label:'RESET',cls:'pbtn',fn:()=>{resetWinStats();openMenu();}},
-    {label:'CANCEL',cls:'pbtn',fn:()=>{openMenu();}}
+    {label:'RESET',cls:'pbtn',fn:()=>{resetWinStats();goBack();}},
+    {label:'CANCEL',cls:'pbtn',fn:()=>{goBack();}}
   ]);
 }
 function openMenu(){
