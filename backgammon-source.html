@@ -251,6 +251,15 @@ body.reviewing #reviewTimelineDock{
 .modalCard p.dim{color:#b7a183; font-size:14px;}
 .btnOkay{padding:13px 54px; font-size:16px; margin-top:16px;}
 .menuList .pbtn{margin:10px 0;}
+/* ---------- win % stats card (menu) ---------- */
+.statsCard{margin:12px 0 4px;padding:10px 12px;border:1px solid rgba(255,220,170,.15);border-radius:10px;background:#17100b;text-align:left;}
+.statsHead{display:flex;align-items:center;gap:8px;color:#f2e7d0;font-size:12px;font-weight:800;letter-spacing:.08em;}
+.statsSince{margin-left:auto;color:#a99576;font-size:11px;font-weight:600;letter-spacing:0;white-space:nowrap;}
+.statsReset{flex:none;padding:4px 10px;border:1px solid rgba(255,220,170,.25);border-radius:7px;background:transparent;color:#d8c5a6;font-size:11px;font-weight:700;letter-spacing:.06em;cursor:pointer;}
+.statsReset:active{transform:translateY(1px);filter:brightness(.94);}
+.statsRow{display:flex;justify-content:space-between;gap:10px;padding:4px 0 0;color:#d8c5a6;font-size:13px;font-variant-numeric:tabular-nums;}
+.statsRow+.statsRow{border-top:1px solid rgba(255,220,170,.07);}
+.statsDiff{color:#f2e7d0;font-weight:700;}
 /* ---------- setup screen ---------- */
 .setupCard{background:#f3e6c8; border-radius:16px; overflow:hidden; max-width:520px; width:100%;
   box-shadow:0 18px 60px rgba(0,0,0,.6);}
@@ -579,7 +588,15 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
   .reviewNav .pbtn{height:36px;padding:4px 2px;}
   .reviewNav .keyJumpText{display:none;}
   .reviewNav .keyJumpIcon{display:inline;font-size:16px;line-height:1;}
-  .reviewNav .keyJump{padding:4px 2px;}}
+  .reviewNav .keyJump{padding:4px 2px;}
+  /* Menu + stats card: compact so the menu fits without scrolling on short screens. */
+  .modalCard.menuList{padding:16px 20px;}
+  .menuList h2{margin-bottom:4px;}
+  .menuList .pbtn{margin:4px 0;}
+  .menuList .toggleRow{margin:8px 0;padding:6px 0;}
+  .menuList .engineAttribution{margin-top:6px;}
+  .statsCard{margin:8px 0 2px;padding:7px 10px;}
+  .statsRow{padding-top:2px;font-size:12px;}}
 </style>
 </head>
 <body>
@@ -1948,7 +1965,7 @@ const GAME={
   sideHuman:'b',sideAI:'w',
   state:null,remaining:[],diceVals:[],seqs:[],snaps:[],history:[],turnHistoryStart:0,
   selected:null,destsNow:[],sourcesNow:[],record:[],turnStart:null,turnMoves:[],turnRecorded:false,lastResult:null,replayIndex:0,
-  pastGames:[],reviewReturn:null,
+  pastGames:[],reviewReturn:null,stats:null,statsExisted:false,
 };
 const PREF={diff:'medium',humanBlack:true,tutor:false};
 const overlay=$('overlay'),overlayCard=$('overlayCard'),btnRoll=$('btnRoll');
@@ -2118,6 +2135,75 @@ function confirmAbandon(){
   $('abYes').onclick=()=>{Snd.btn();bumpToken();hideOverlay();showSetup();};
   $('abNo').onclick=()=>{Snd.btn();openMenu();};
 }
+/* ---------- win % stats (menu card) ----------
+ * Finished games only: a game counts when endGame runs without a resign.
+ * Resigns, abandons and unfinished games never touch these counters.
+ * Local copy lives in localStorage; when the Firebase sync module is present
+ * it mirrors the same counters to a shared Firestore doc so the iPad and the
+ * phone agree (see firebase-sync.js). */
+const WIN_STATS_KEY='bgWinStatsV1';
+const WIN_STATS_DIFFS=['easy','medium','hard'];
+function newWinStats(){
+  return{v:1,gen:Math.random().toString(36).slice(2,10)+Date.now().toString(36),since:Date.now(),
+    easy:{w:0,l:0},medium:{w:0,l:0},hard:{w:0,l:0}};
+}
+function loadWinStats(){
+  try{
+    const raw=localStorage.getItem(WIN_STATS_KEY);
+    if(raw){
+      const s=JSON.parse(raw);
+      if(s&&s.v===1&&typeof s.since==='number'&&typeof s.gen==='string'){
+        for(const k of WIN_STATS_DIFFS)if(!s[k]||typeof s[k].w!=='number'||typeof s[k].l!=='number')s[k]={w:0,l:0};
+        GAME.stats=s;GAME.statsExisted=true;return s;
+      }
+    }
+  }catch(e){}
+  GAME.stats=newWinStats();GAME.statsExisted=false;saveWinStats();return GAME.stats;
+}
+function saveWinStats(){try{localStorage.setItem(WIN_STATS_KEY,JSON.stringify(GAME.stats));}catch(e){}}
+function recordWinStats(diffKey,won){
+  if(!GAME.stats)loadWinStats();
+  const k=AI_TIERS[diffKey]?diffKey:'medium';
+  if(won)GAME.stats[k].w++;else GAME.stats[k].l++;
+  saveWinStats();
+}
+function resetWinStats(){
+  GAME.stats=newWinStats();GAME.statsExisted=true;saveWinStats();refreshWinStatsCard();
+  if(typeof window.__bgStatsCloudSync==='function'){try{window.__bgStatsCloudSync();}catch(e){}}
+  toast('Win stats reset.');
+}
+function winStatsSinceLabel(){
+  return new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',year:'numeric'}).format(new Date(GAME.stats.since));
+}
+function winStatsRow(key){
+  const s=(GAME.stats&&GAME.stats[key])||{w:0,l:0};
+  const g=s.w+s.l,pct=g?Math.round(s.w/g*100):null;
+  const label=(AI_TIERS[key]||{}).label||key;
+  return '<div class="statsRow"><span class="statsDiff">'+escHtml(label)+'</span><span>'+(pct===null?'—':pct+'%')+' · '+s.w+'–'+s.l+' · '+g+' game'+(g===1?'':'s')+'</span></div>';
+}
+function winStatsHtml(){
+  if(!GAME.stats)loadWinStats();
+  return '<div class="statsCard" id="winStatsCard"><div class="statsHead"><span>WIN %</span><span class="statsSince">Since '+escHtml(winStatsSinceLabel())+'</span><button class="statsReset" id="winStatsReset" type="button">RESET</button></div>'
+    +WIN_STATS_DIFFS.map(winStatsRow).join('')+'</div>';
+}
+function wireWinStatsReset(){
+  const b=$('winStatsReset');
+  if(b)b.onclick=()=>{Snd.btn();confirmResetWinStats();};
+}
+function refreshWinStatsCard(){
+  const el=document.getElementById('winStatsCard');
+  if(!el||!GAME.stats)return;
+  const tmp=document.createElement('div');tmp.innerHTML=winStatsHtml();
+  const fresh=tmp.firstChild;
+  if(fresh)el.replaceWith(fresh);
+  wireWinStatsReset();
+}
+function confirmResetWinStats(){
+  openDlg('Reset win stats?','This clears all wins and losses on every device and starts a new tracking window from today.',[
+    {label:'RESET',cls:'pbtn',fn:()=>{resetWinStats();openMenu();}},
+    {label:'CANCEL',cls:'pbtn',fn:()=>{openMenu();}}
+  ]);
+}
 function openMenu(){
   const engine=window.GNUbgEvaluator,engineReady=!!(engine&&engine.ready);
   const engineState=!engine?'Game Review is unavailable':engineReady?'':engine.status==='waiting'?'Game Review download interrupted · retrying automatically':engine.status==='retrying'?'Game Review is retrying its download…':'Game Review is downloading…';
@@ -2128,6 +2214,7 @@ function openMenu(){
     ${inGame?'<button class="pbtn" id="mResign">RESIGN</button>':''}
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
+    ${winStatsHtml()}
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
@@ -2137,6 +2224,7 @@ function openMenu(){
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
+  wireWinStatsReset();
 }
 function showRules(){
   showOverlay(`<h2>How to play</h2><ul class="helpList">
@@ -2666,7 +2754,7 @@ async function forcedFlow(seq,tok){
   continueMoving();
 }
 function tapSource(from){
-  const seen=new Set();const dests=[];
+  const seen=new Map();const dests=[];
   for(const q of GAME.seqs){
     if(!q.length||q[0].from!==from)continue;
     // Every consecutive prefix that keeps moving this checker is a legal
@@ -2680,13 +2768,25 @@ function tapSource(from){
       chain.push(move);
       const label=chain.map(m=>m.die).sort((a,b)=>a-b).join('+');
       const key=move.to+'|'+label;
-      if(!seen.has(key)){
-        seen.add(key);
+      const chainHits=chain.some(m=>m.hit);
+      const prev=seen.get(key);
+      if(prev===undefined){
+        seen.set(key,dests.length);
         dests.push(Object.assign({},move,{
           label,
           moves:chain.slice(),
           compound:chain.length>1
         }));
+      }else if(chainHits&&!dests[prev].moves.some(m=>m.hit)){
+        // Same destination, same dice, but this order hits an opponent blot
+        // and the stored route does not: prefer the hitting route. Different
+        // destinations stay the player's choice; only same-destination
+        // routes are auto-decided here.
+        dests[prev]=Object.assign({},move,{
+          label,
+          moves:chain.slice(),
+          compound:chain.length>1
+        });
       }
       if(move.to==='off')break;
       expectedFrom=move.to;
@@ -3279,6 +3379,7 @@ function endGame(winner,opts){
   const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp;
   GAME.lastResult={winner,name:wname,points:pts,state:cloneState(GAME.state),info,resigned:!!opts.resigned};
   const won=winner===GAME.sideHuman;
+  if(!opts.resigned)recordWinStats(GAME.difficulty,won); // win % stats: finished games only, never resigns
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
     nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
@@ -3360,6 +3461,7 @@ function init(){
   $('btnMenu').addEventListener('click',()=>{Snd.btn();openMenu();});
   svg.addEventListener('contextmenu',e=>e.preventDefault());
   refreshIdentity();
+  loadWinStats();
   showSetup();
   syncUI();
 }

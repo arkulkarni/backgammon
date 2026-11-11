@@ -17,6 +17,10 @@
  * before </body> of the deployed index.html (see INTEGRATION.md). It does NOT
  * modify backgammon.html. It monkey-patches at load:
  *   - window.endGame           -> after a game ends, queue a Firestore save
+ *   - win % stats              -> mirrored to shared doc users/{uid}/games/__stats
+ *                                 (per-difficulty counters from backgammon.html;
+ *                                 merged on sign-in and after each finished game,
+ *                                 so the iPad and the phone agree)
  *   - window.pastGamesListHtml -> render cloud games + unsaved session games
  *   - window.openMenu          -> append a SIGN OUT button
  * plus one delegated document click listener for [data-cloudgame] buttons,
@@ -111,6 +115,7 @@ function onGameEnded(){
   if(entry._syncId)return; // double-invocation guard
   entry._syncId='g'+Date.now().toString(36)+Math.random().toString(36).slice(2,10);
   saveGame(entry);
+  try{syncWinStatsCloud();}catch(e){}
 }
 
 function onDocClick(ev){
@@ -119,7 +124,7 @@ function onDocClick(ev){
   var entry=(GAME.cloudGames||[])[Number(t.getAttribute('data-cloudgame'))];
   if(!entry||!entry.record)return;
   try{if(typeof Snd!=='undefined')Snd.btn();}catch(e){}
-  try{openCloudGame(entry);}catch(e){}
+  try{openCloudGame(entry);}catch(e){if(window.console&&console.error)console.error('openCloudGame failed',e);try{if(typeof toast!=='undefined')toast('Could not open that game.');}catch(_){}}
 }
 
 /* Mirrors the game's own openArchivedGame, but reads from a cloud entry. */
@@ -135,7 +140,12 @@ function openCloudGame(entry){
   GAME.sideHuman=entry.sideHuman;GAME.sideAI=entry.sideAI;
   refreshIdentity();hideOverlay();
   var first=keyMoments()[0];
-  showReplay(first?first.recordIndex:0,!!first);
+  var p=showReplay(first?first.recordIndex:0);
+  if(p&&p.catch)p.catch(function(err){
+    try{if(typeof toast!=='undefined')toast('Could not open review: '+(err&&err.message?err.message:String(err)));}
+    catch(e){}
+    if(window.console&&console.error)console.error('openCloudGame showReplay failed',err);
+  });
 }
 
 /* Cloud entries first (newest first), then session entries not yet saved.
@@ -475,6 +485,82 @@ function loadCloudGames(){
   });
 }
 
+/* ---------------- shared win % stats ----------------
+ * The stats card (backgammon.html) counts finished games per difficulty in
+ * localStorage. The same counters are mirrored here to a shared Firestore doc
+ * so the iPad and the phone agree. The doc lives in the games collection as
+ * id '__stats': the existing rules already allow any doc id under
+ * users/{uid}/games, and readGameDocs skips docs without record/lastResult,
+ * so it never appears in Past Games. No console/rules change needed.
+ *
+ * Merge rules (one user, one device at a time in practice):
+ * - Fresh device (no local stats yet): adopt the cloud doc wholesale.
+ * - Same generation: per-counter max (union of both devices' games),
+ *   earliest since.
+ * - Different generation (a reset happened somewhere): the later window wins.
+ * - No cloud doc yet: push local.
+ * Every merge pushes the merged state back, so both sides converge. */
+var STATS_DOC_ID='__stats';
+function statsDocRef(){
+  return state.db.collection('users').doc(state.uid).collection('games').doc(STATS_DOC_ID);
+}
+function localWinStats(){
+  try{
+    if(typeof loadWinStats==='function'){if(!GAME.stats)loadWinStats();}
+    return GAME.stats||null;
+  }catch(e){return null;}
+}
+function statsToCloud(s){
+  return {kind:'winStats',gen:s.gen,since:s.since,
+    easyW:s.easy.w,easyL:s.easy.l,mediumW:s.medium.w,mediumL:s.medium.l,hardW:s.hard.w,hardL:s.hard.l,
+    updatedAt:firebase.firestore.FieldValue.serverTimestamp()};
+}
+function statsFromCloud(d){
+  return {v:1,gen:d.gen,since:d.since,
+    easy:{w:d.easyW||0,l:d.easyL||0},medium:{w:d.mediumW||0,l:d.mediumL||0},hard:{w:d.hardW||0,l:d.hardL||0}};
+}
+/* Fold a cloud doc into the local stats. Returns true when local changed. */
+function applyCloudStats(d){
+  var L=localWinStats();if(!L)return false;
+  if(!GAME.statsExisted){
+    GAME.stats=statsFromCloud(d);GAME.statsExisted=true;
+    try{if(typeof saveWinStats==='function')saveWinStats();}catch(e){}
+    return true;
+  }
+  if(d.gen===L.gen){
+    var changed=false;
+    var pairs=[['easy','easyW','easyL'],['medium','mediumW','mediumL'],['hard','hardW','hardL']];
+    pairs.forEach(function(p){
+      var w=Math.max(L[p[0]].w,d[p[1]]||0),l=Math.max(L[p[0]].l,d[p[2]]||0);
+      if(w!==L[p[0]].w||l!==L[p[0]].l){L[p[0]].w=w;L[p[0]].l=l;changed=true;}
+    });
+    if(d.since&&d.since<L.since){L.since=d.since;changed=true;}
+    if(changed){try{if(typeof saveWinStats==='function')saveWinStats();}catch(e){}}
+    return changed;
+  }
+  if(d.since&&d.since>=L.since){
+    GAME.stats=statsFromCloud(d);GAME.statsExisted=true;
+    try{if(typeof saveWinStats==='function')saveWinStats();}catch(e){}
+    return true;
+  }
+  return false; // local holds the newer window (a reset); caller pushes it
+}
+function syncWinStatsCloud(){
+  if(!state.ready||!state.db||!state.uid)return;
+  var L=localWinStats();if(!L)return;
+  var ref=statsDocRef();
+  ref.get().then(function(snap){
+    var d=snap.exists?snap.data():null;
+    if(!d){ref.set(statsToCloud(L)).catch(function(){});return;}
+    if(d.kind!=='winStats')return;
+    var changed=false;
+    try{changed=applyCloudStats(d);}catch(e){}
+    if(changed){try{if(typeof refreshWinStatsCard==='function')refreshWinStatsCard();}catch(e){}}
+    try{ref.set(statsToCloud(GAME.stats)).catch(function(){});}catch(e){}
+  },function(){/* offline: local stats still count; next sync catches up */});
+}
+window.__bgStatsCloudSync=syncWinStatsCloud;
+
 /* Copy games saved under the pre-login anonymous id into the signed-in account. */
 function migrateAnonGames(docs){
   if(!docs.length)return Promise.resolve();
@@ -503,7 +589,7 @@ function onSignedIn(user){
   // De-dupe by syncId: the same doc may be in both lists.
   var seen={},uniq=[];
   mig.forEach(function(d){var k=d&&d.syncId||null;if(k&&seen[k])return;if(k)seen[k]=1;uniq.push(d);});
-  var done=function(){loadCloudGames();};
+  var done=function(){loadCloudGames();try{syncWinStatsCloud();}catch(e){}};
   if(uniq.length){
     migrateAnonGames(uniq).then(done,done);
   }else{
