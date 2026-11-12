@@ -2061,9 +2061,7 @@ function showSetup(){
        <div class="pillRow difficultyRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}"><span class="tierName">${tier.label}</span></button>`).join('')}</div>
      </div>
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
-     <button class="pbtn" id="sWinStats">WIN %</button>
    </div>`,'card setupCard');
-  $('sWinStats').onclick=()=>{Snd.btn();showWinStatsPopup('setup');};
   $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
   $('sStart').onclick=()=>{
     Snd.opening();
@@ -2120,8 +2118,9 @@ function pastGamesListHtml(){
 }
 function showPastGames(returnTo){
   const backToSetup=returnTo==='setup';
-  showOverlay(`<h2>Past Games</h2><div class="pastGames">${pastGamesListHtml()}</div><button class="pbtn" id="pgBack">BACK</button>`,'modalCard menuList');
+  showOverlay(`<h2>Past Games</h2><div class="pastGames">${pastGamesListHtml()}</div><button class="pbtn" id="pgWinStats">WIN %</button><button class="pbtn" id="pgBack">BACK</button>`,'modalCard menuList');
   $('pgBack').onclick=()=>{Snd.btn();backToSetup?showSetup():openMenu();};
+  $('pgWinStats').onclick=()=>{Snd.btn();showWinStatsPopup(backToSetup?'past-setup':'past-menu');};
   overlayCard.querySelectorAll('[data-past]').forEach(el=>el.onclick=()=>{Snd.btn();openArchivedGame(Number(el.getAttribute('data-past')));});
 }
 function confirmResign(){
@@ -2208,8 +2207,7 @@ function refreshWinStatsCard(){
 }
 function confirmResetWinStats(returnTo){
   const goBack=()=>{
-    if(returnTo==='popup-setup')showWinStatsPopup('setup');
-    else if(returnTo==='popup-menu')showWinStatsPopup('menu');
+    if(returnTo&&returnTo.indexOf('popup-')===0)showWinStatsPopup(returnTo.slice(6));
     else if(returnTo==='setup')showSetup();
     else openMenu();
   };
@@ -2243,7 +2241,11 @@ function openMenu(){
 function showWinStatsPopup(returnTo){
   showOverlay(`${winStatsHtml()}<button class="btnOkay" id="winStatsClose">OKAY</button>`,'modalCard');
   wireWinStatsReset('popup-'+(returnTo||'menu'));
-  $('winStatsClose').onclick=()=>{Snd.btn();if(returnTo==='setup')showSetup();else openMenu();};
+  $('winStatsClose').onclick=()=>{Snd.btn();
+    if(returnTo==='setup')showSetup();
+    else if(returnTo==='past-setup')showPastGames('setup');
+    else if(returnTo==='past-menu')showPastGames();
+    else openMenu();};
 }
 function showRules(){
   showOverlay(`<h2>How to play</h2><ul class="helpList">
