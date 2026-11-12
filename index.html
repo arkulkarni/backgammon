@@ -2061,9 +2061,9 @@ function showSetup(){
        <div class="pillRow difficultyRow">${diffs.map(([key,tier])=>`<button class="pill tierPill${key===PREF.diff?' sel':''}" data-diff="${key}" aria-label="${tier.label}"><span class="tierName">${tier.label}</span></button>`).join('')}</div>
      </div>
      <div class="setupNote">Single win 1 pt · Gammon 2 · Backgammon 3</div>
-     ${winStatsHtml()}
+     <button class="pbtn" id="sWinStats">WIN %</button>
    </div>`,'card setupCard');
-  wireWinStatsReset('setup');
+  $('sWinStats').onclick=()=>{Snd.btn();showWinStatsPopup('setup');};
   $('sPastGames').onclick=()=>{Snd.btn();showPastGames('setup');};
   $('sStart').onclick=()=>{
     Snd.opening();
@@ -2207,7 +2207,12 @@ function refreshWinStatsCard(){
   wireWinStatsReset();
 }
 function confirmResetWinStats(returnTo){
-  const goBack=()=>{if(returnTo==='setup')showSetup();else openMenu();};
+  const goBack=()=>{
+    if(returnTo==='popup-setup')showWinStatsPopup('setup');
+    else if(returnTo==='popup-menu')showWinStatsPopup('menu');
+    else if(returnTo==='setup')showSetup();
+    else openMenu();
+  };
   openDlg('Reset win stats?','This clears all wins and losses on every device and starts a new tracking window from today.',[
     {label:'RESET',cls:'pbtn',fn:()=>{resetWinStats();goBack();}},
     {label:'CANCEL',cls:'pbtn',fn:()=>{goBack();}}
@@ -2223,7 +2228,7 @@ function openMenu(){
     ${inGame?'<button class="pbtn" id="mResign">RESIGN</button>':''}
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
-    ${winStatsHtml()}
+    <button class="pbtn" id="mWinStats">WIN %</button>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
@@ -2232,8 +2237,13 @@ function openMenu(){
   const mResign=$('mResign');if(mResign)mResign.onclick=()=>{Snd.btn();confirmResign();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
+  $('mWinStats').onclick=()=>{Snd.btn();showWinStatsPopup('menu');};
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
-  wireWinStatsReset();
+}
+function showWinStatsPopup(returnTo){
+  showOverlay(`${winStatsHtml()}<button class="btnOkay" id="winStatsClose">OKAY</button>`,'modalCard');
+  wireWinStatsReset('popup-'+(returnTo||'menu'));
+  $('winStatsClose').onclick=()=>{Snd.btn();if(returnTo==='setup')showSetup();else openMenu();};
 }
 function showRules(){
   showOverlay(`<h2>How to play</h2><ul class="helpList">
