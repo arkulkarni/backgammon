@@ -718,7 +718,7 @@ async function sleep(ms){
 const randInt=n=>Math.floor(Math.random()*n);
 /* ================= audio ================= */
 const Snd={
-  ctx:null,on:true,lastGesture:0,resumePending:null,
+  ctx:null,on:true,lastGesture:0,resumePending:null,recovering:false,
   createContext(){
     const AC=window.AudioContext||window.webkitAudioContext;
     if(!AC)return null;
@@ -778,6 +778,42 @@ const Snd={
       this.resume(c,!!fromGesture);
       return c;
     }catch(e){return null;}
+  },
+  // Recovery for returning from another app: iOS can leave the context stuck
+  // in "interrupted", where resume() is ignored and a hung resume promise
+  // blocks later attempts. Run the same suspend->resume cycle the orientation
+  // gate uses on rotate (proven to un-stick it); if it is still not running
+  // a moment later, drop the stuck context and start fresh — the next tap
+  // unlocks the new one through the existing gesture handlers.
+  recoverAudio(){
+    if(!this.on||ORIENTATION_PAUSE.blocked||document.visibilityState==='hidden')return;
+    if(this.recovering)return;
+    const c=this.ctx;
+    if(!c||c.state==='closed'){this.ensure(false);return;}
+    if(c.state==='running')return;
+    this.recovering=true;
+    this.resumePending=null;
+    const attempt=()=>{
+      if(this.ctx!==c){this.recovering=false;return;}
+      try{const p=c.resume();if(p&&p.catch)p.catch(()=>{});}catch(e){}
+      setTimeout(()=>{
+        if(this.ctx!==c){this.recovering=false;return;}
+        if(c.state==='running'){this.recovering=false;return;}
+        this.recreateAudioContext();
+        this.recovering=false;
+      },600);
+    };
+    try{
+      const sp=c.suspend();
+      if(sp&&typeof sp.then==='function')sp.then(attempt).catch(attempt);
+      else attempt();
+    }catch(e){attempt();}
+  },
+  recreateAudioContext(){
+    const old=this.ctx;
+    this.ctx=null;this.resumePending=null;
+    if(old&&old.state!=='closed'){try{const p=old.close();if(p&&p.catch)p.catch(()=>{});}catch(e){}}
+    try{this.createContext();}catch(e){}
   },
   tone(freq,dur,type,vol,slideTo,delay){
     if(!this.on)return; this.ensure();
@@ -916,9 +952,9 @@ const unlockAudio=e=>{
 document.addEventListener('pointerdown',unlockAudio,{passive:true,capture:true});
 document.addEventListener('touchend',unlockAudio,{passive:true,capture:true});
 document.addEventListener('keydown',unlockAudio,{capture:true});
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')Snd.ensure(false);});
-window.addEventListener('pageshow',()=>Snd.ensure(false));
-window.addEventListener('focus',()=>Snd.ensure(false));
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')Snd.recoverAudio();});
+window.addEventListener('pageshow',()=>Snd.recoverAudio());
+window.addEventListener('focus',()=>Snd.recoverAudio());
 /* ================= rules engine (unit-tested: see build notes) ================= */
 /* state points hold checker ids: 'w0'..'w14','b0'..'b14' */
 function newState(){
