@@ -2226,7 +2226,6 @@ function openMenu(){
     ${inGame?'<button class="pbtn" id="mResign">RESIGN</button>':''}
     <button class="pbtn" id="mRules">RULES</button>
     <button class="pbtn" id="mPastGames">PAST GAMES</button>
-    <button class="pbtn" id="mWinStats">WIN %</button>
     <div class="toggleRow"><div><b>Tutor</b><div class="dim">Warn before a significant error</div></div><button class="switch${PREF.tutor?' on':''}" id="mTutor" role="switch" aria-label="Tutor warnings" aria-checked="${PREF.tutor}"></button></div>
     ${engineState?`<p class="engineState" role="status">${engineState}</p>`:''}
     <p class="engineAttribution"><a href="https://www.gnu.org/software/gnubg/" target="_blank" rel="noopener">GNU Backgammon</a> · <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GPL-3.0</a></p>`,'modalCard menuList');
@@ -2235,7 +2234,6 @@ function openMenu(){
   const mResign=$('mResign');if(mResign)mResign.onclick=()=>{Snd.btn();confirmResign();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
-  $('mWinStats').onclick=()=>{Snd.btn();showWinStatsPopup('menu');};
   $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
 }
 function showWinStatsPopup(returnTo){
