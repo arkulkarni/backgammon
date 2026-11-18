@@ -182,6 +182,8 @@ button.offBadge.ready:active{transform:scale(.95);}
   box-shadow:0 2px 5px rgba(35,14,6,.38),inset 0 1px 2px rgba(78,13,8,.35);
 }
 .pbtn:disabled{opacity:.38;filter:saturate(.5);box-shadow:inset 0 1px 0 rgba(255,255,255,.15);}
+#btnFF{font-size:12px;}
+.pbtn.ffOn{background:linear-gradient(180deg,#ffd98a 0%,#e8a83e 55%,#c07f1a 100%);color:#3a2408;text-shadow:0 1px 0 rgba(255,240,200,.6);border-color:#8a5a10;}
 /* ---------- toast ---------- */
 #toast{
   position:fixed; left:44%; top:14px; z-index:70; pointer-events:none;
@@ -669,6 +671,7 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
     <section class="pblk mid">
       <button class="pbtn" id="btnUndo">UNDO</button>
       <button class="pbtn" id="btnMenu">MENU</button>
+      <button class="pbtn" id="btnFF" type="button" hidden>⏩ DOUBLE SPEED</button>
     </section>
     <section class="pblk" id="blkOpp">
       <div class="offBadge white" id="badgeOpp"><span id="offOpp">0</span></div>
@@ -716,6 +719,9 @@ async function sleep(ms){
   }
 }
 const randInt=n=>Math.floor(Math.random()*n);
+// Animation pacing: divides a duration by the current speed multiplier
+// (2 while the trapped fast-forward button is on, else 1).
+function spd(ms){return ms/(GAME.animSpeed||1);}
 /* ================= audio ================= */
 const Snd={
   ctx:null,on:true,lastGesture:0,resumePending:null,recovering:false,
@@ -1686,7 +1692,7 @@ function flyCheckerBetweenBadge(el,color,duration,fromBadge,onfinish){
   }else finish();
 }
 function animateMoveLayout(st,m,movingId,hitId,actor,speed){
-  speed=speed||1;
+  speed=speed||GAME.animSpeed||1;
   const computer=actor==='computer';
   const moveMs=(computer?MOTION.computer:MOTION.human)/speed;
   const barMoveMs=(computer?MOTION.barComputer:MOTION.barHuman)/speed;
@@ -1736,7 +1742,7 @@ function animateMoveLayout(st,m,movingId,hitId,actor,speed){
   return {moveMs,barDelayMs,barMoveMs,totalMs:m.hit?barDelayMs+barMoveMs:moveMs};
 }
 function animateUndoLayout(st,speed){
-  speed=speed||1;
+  speed=speed||GAME.animSpeed||1;
   const duration=MOTION.human/speed;
   const before={};
   for(const id in CK){
@@ -1818,7 +1824,7 @@ function glideDieGroup(d,to,duration){
 async function revealDouble(value){
   // Let the genuine two-die cast read first; then quietly expand the pair to
   // the four playable dice. This avoids implying that four dice were thrown.
-  await sleep(260);
+  await sleep(spd(260));
   const pos4=dieRestPositions(4),old=diceEls.slice(0,2);
   const left=makeDie(value,pos4[0][0],pos4[0][1]);
   const right=makeDie(value,pos4[3][0],pos4[3][1]);
@@ -1832,10 +1838,11 @@ async function revealDouble(value){
     old[1].x=pos4[2][0];old[1].y=pos4[2][1];old[1].g.setAttribute('transform',`translate(${old[1].x},${old[1].y})`);
     left.inner.style.cssText='';right.inner.style.cssText='';return;
   }
-  const fadeOpts={duration:MOTION.doubleReveal,easing:'cubic-bezier(.22,.61,.36,1)',fill:'both'};
+  const dr=spd(MOTION.doubleReveal);
+  const fadeOpts={duration:dr,easing:'cubic-bezier(.22,.61,.36,1)',fill:'both'};
   const a=left.inner.animate([{opacity:0,transform:'translate(42px,0) scale(.76)'},{opacity:1,transform:'translate(0,0) scale(1)'}],fadeOpts);
   const b=right.inner.animate([{opacity:0,transform:'translate(-42px,0) scale(.76)'},{opacity:1,transform:'translate(0,0) scale(1)'}],fadeOpts);
-  await Promise.all([glideDieGroup(old[0],pos4[1],MOTION.doubleReveal),glideDieGroup(old[1],pos4[2],MOTION.doubleReveal)]);
+  await Promise.all([glideDieGroup(old[0],pos4[1],dr),glideDieGroup(old[1],pos4[2],dr)]);
   a.cancel();b.cancel();left.inner.style.cssText='';right.inner.style.cssText='';
 }
 function diceFlightPath(i,actor,bounceCount,collision){
@@ -1861,7 +1868,7 @@ function diceFlightPath(i,actor,bounceCount,collision){
   return path;
 }
 async function tumbleDice(values,durMs,actor){
-  const duration=durMs||1000;
+  const duration=(durMs||1000)/(GAME.animSpeed||1);
   // A physical throw is always two dice. Doubles are expanded only after both
   // cast dice have landed, by revealDouble().
   showDice(values.map(()=>1+Math.floor(Math.random()*6)));
@@ -1995,7 +2002,7 @@ function renderReviewMove(row,showAlternative){
 }
 /* ================= controller ================= */
 const GAME={
-  phase:'setup',token:0,
+  phase:'setup',token:0,animSpeed:1,
   difficulty:'medium',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
@@ -2490,6 +2497,23 @@ function syncUI(){
   pinRollButton();
   setRollVisible(GAME.phase==='preroll');
   updateTakeOffControl();
+  syncFastForward();
+}
+// Fast-forward: while the player is trapped (shut out), offer a double-speed
+// button in the rail. The toggle sticks while trapped so one tap covers every
+// computer turn until the board opens; once the player can move again the
+// button hides and speed returns to normal.
+function syncFastForward(){
+  const btn=$('btnFF');if(!btn)return;
+  const active=['preroll','rolling','moving','animating','ai','endturn','nomove'].includes(GAME.phase);
+  const trapped=active&&!!GAME.state&&isShutOut(GAME.state,GAME.sideHuman);
+  if(!trapped){
+    if(GAME.animSpeed!==1)GAME.animSpeed=1;
+    btn.hidden=true;btn.classList.remove('ffOn');
+    return;
+  }
+  btn.hidden=false;
+  btn.classList.toggle('ffOn',GAME.animSpeed===2);
 }
 /* ---------- match / game flow ---------- */
 function startMatch(){
@@ -2617,9 +2641,9 @@ function continueMoving(){
 async function endHumanTurn(tok){
   finishCurrentTurnRecord();
   GAME.phase='endturn';syncUI();
-  await sleep(500);
+  await sleep(spd(500));
   clearDice();
-  await sleep(200);
+  await sleep(spd(200));
   if(tok!==GAME.token)return;
   aiTurn();
 }
@@ -2632,7 +2656,7 @@ function showAiNoMoveDialog(tok,partial){
       if(tok!==GAME.token)return;
       GAME.phase='endturn';syncUI();
       clearDice();
-      await sleep(250);
+      await sleep(spd(250));
       if(tok!==GAME.token)return;
       humanTurn();
     }}
@@ -2649,7 +2673,18 @@ function stopThinkIndicator(){
 async function aiTurn(openingDice){
   GAME.phase='ai';syncUI();clearHL();
   const tok=GAME.token;
-  await sleep(900);if(tok!==GAME.token)return;
+  // Shut out (on the bar, every entry point blocked): no roll can produce a
+  // move, so skip the roll and go straight to the no-move dialog, mirroring
+  // the player's skip-roll path. Recorded as a no-dice turn.
+  if(isShutOut(GAME.state,GAME.sideAI)){
+    const aiBefore=cloneState(GAME.state);
+    GAME.diceVals=[];GAME.remaining=[];
+    startTurnRecord(GAME.sideAI,[]);
+    recordTurn(GAME.sideAI,[],[],aiBefore,GAME.state);
+    showAiNoMoveDialog(tok,false);
+    return;
+  }
+  await sleep(spd(900));if(tok!==GAME.token)return;
   let dice;
   if(openingDice){dice=openingDice;showDice(dice);}
   else{
@@ -2733,10 +2768,10 @@ async function aiTurn(openingDice){
     showAiNoMoveDialog(tok,true);
     return;
   }
-  await sleep(650);
+  await sleep(spd(650));
   if(tok!==GAME.token)return;
   clearDice();
-  await sleep(250);
+  await sleep(spd(250));
   if(tok!==GAME.token)return;
   humanTurn();
 }
@@ -2793,7 +2828,7 @@ async function applyHumanMove(m){
 }
 async function forcedFlow(seq,tok){
   GAME.phase='moving';syncUI();
-  await sleep(260);
+  await sleep(spd(260));
   for(const m of seq){
     if(tok!==GAME.token||GAME.phase!=='moving')return;
     const r=await applyHumanMove(m);
@@ -3508,6 +3543,7 @@ function init(){
   $('badgeYou').addEventListener('click',()=>{Snd.ensure();onOffTap();});
   $('btnUndo').addEventListener('click',()=>{onUndo();});
   $('btnMenu').addEventListener('click',()=>{Snd.btn();openMenu();});
+  $('btnFF').addEventListener('click',()=>{Snd.btn();GAME.animSpeed=GAME.animSpeed===2?1:2;syncFastForward();});
   svg.addEventListener('contextmenu',e=>e.preventDefault());
   refreshIdentity();
   loadWinStats();
