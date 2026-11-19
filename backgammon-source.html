@@ -182,8 +182,7 @@ button.offBadge.ready:active{transform:scale(.95);}
   box-shadow:0 2px 5px rgba(35,14,6,.38),inset 0 1px 2px rgba(78,13,8,.35);
 }
 .pbtn:disabled{opacity:.38;filter:saturate(.5);box-shadow:inset 0 1px 0 rgba(255,255,255,.15);}
-#btnFF{font-size:12px;}
-.pbtn.ffOn{background:linear-gradient(180deg,#ffd98a 0%,#e8a83e 55%,#c07f1a 100%);color:#3a2408;text-shadow:0 1px 0 rgba(255,240,200,.6);border-color:#8a5a10;}
+.btnOkay.ffOn{background:linear-gradient(180deg,#ffd98a 0%,#e8a83e 55%,#c07f1a 100%);color:#3a2408;text-shadow:0 1px 0 rgba(255,240,200,.6);border-color:#8a5a10;}
 /* ---------- toast ---------- */
 #toast{
   position:fixed; left:44%; top:14px; z-index:70; pointer-events:none;
@@ -671,7 +670,6 @@ body.reviewing #side{flex-basis:284px;padding:18px 16px;overflow:hidden;}
     <section class="pblk mid">
       <button class="pbtn" id="btnUndo">UNDO</button>
       <button class="pbtn" id="btnMenu">MENU</button>
-      <button class="pbtn" id="btnFF" type="button" hidden>⏩ DOUBLE SPEED</button>
     </section>
     <section class="pblk" id="blkOpp">
       <div class="offBadge white" id="badgeOpp"><span id="offOpp">0</span></div>
@@ -2497,24 +2495,8 @@ function syncUI(){
   pinRollButton();
   setRollVisible(GAME.phase==='preroll');
   updateTakeOffControl();
-  syncFastForward();
 }
-// Fast-forward: while the player is trapped (shut out), offer a double-speed
-// button in the rail. The toggle sticks while trapped so one tap covers every
-// computer turn until the board opens; once the player can move again the
-// button hides and speed returns to normal.
-function syncFastForward(){
-  const btn=$('btnFF');if(!btn)return;
-  const active=['preroll','rolling','moving','animating','ai','endturn','nomove'].includes(GAME.phase);
-  const trapped=active&&!!GAME.state&&isShutOut(GAME.state,GAME.sideHuman);
-  if(!trapped){
-    if(GAME.animSpeed!==1)GAME.animSpeed=1;
-    btn.hidden=true;btn.classList.remove('ffOn');
-    return;
-  }
-  btn.hidden=false;
-  btn.classList.toggle('ffOn',GAME.animSpeed===2);
-}
+
 /* ---------- match / game flow ---------- */
 function startMatch(){
   bumpToken();
@@ -2527,7 +2509,7 @@ function newGame(){
   GAME.state=newState();
   FLY_OFF_IDS.clear();
   GAME.remaining=[];GAME.snaps=[];GAME.history=[];GAME.turnHistoryStart=0;GAME.selected=null;GAME.destsNow=[];GAME.sourcesNow=[];
-  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;
+  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;
   clearDice();clearHL();relabelTriangles();layout(GAME.state);updatePanel();syncUI();
   rolloff(tok);
 }
@@ -2580,6 +2562,9 @@ function humanTurn(){
   if(isShutOut(GAME.state,GAME.sideHuman)){
     startTurnRecord(GAME.sideHuman,[]);
     showHumanNoMoveDialog();
+  }else{
+    // Board open again: back to normal speed.
+    GAME.animSpeed=1;
   }
 }
 async function onRoll(){
@@ -2599,11 +2584,20 @@ function showHumanNoMoveDialog(){
   const partial=GAME.remaining.length<GAME.diceVals.length;
   const detail=partial?' cannot use the remaining dice.':' cannot move.';
   GAME.phase='nomove';clearHL();syncUI();
+  // Fast-forward lives here, on the popup: while trapped, tap it once and the
+  // computer's turns run at double speed until the board opens again. The
+  // toggle stays on the popup (gold + check) and does not close the dialog.
+  const ffOn=GAME.animSpeed===2;
   openDlg('No legal moves',`${escHtml(GAME.nameYou)}${detail} Tap OKAY to pass the turn.`,[
     {label:'OKAY',cls:'btnOkay',fn:()=>{
       hideOverlay();
       if(tok!==GAME.token)return;
       endHumanTurn(tok);
+    }},
+    {label:ffOn?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED',cls:'btnOkay ffBtn'+(ffOn?' ffOn':''),fn:()=>{
+      GAME.animSpeed=GAME.animSpeed===2?1:2;
+      const el=overlayCard.querySelector('.ffBtn');
+      if(el){el.classList.toggle('ffOn',GAME.animSpeed===2);el.textContent=GAME.animSpeed===2?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED';}
     }}
   ]);
 }
@@ -3384,7 +3378,7 @@ async function showReplay(index){
   await ensureGNUReady('Move review');
   analyzeMissingRecords();
   reviewAnimationToken++;
-  GAME.phase='replay';clearHL();
+  GAME.phase='replay';clearHL();GAME.animSpeed=1;
   const max=GAME.record.length,i=Math.max(0,Math.min(Number(index)||0,max));
   GAME.replayIndex=i;
   const vm=reviewVM(i);
@@ -3543,7 +3537,6 @@ function init(){
   $('badgeYou').addEventListener('click',()=>{Snd.ensure();onOffTap();});
   $('btnUndo').addEventListener('click',()=>{onUndo();});
   $('btnMenu').addEventListener('click',()=>{Snd.btn();openMenu();});
-  $('btnFF').addEventListener('click',()=>{Snd.btn();GAME.animSpeed=GAME.animSpeed===2?1:2;syncFastForward();});
   svg.addEventListener('contextmenu',e=>e.preventDefault());
   refreshIdentity();
   loadWinStats();
