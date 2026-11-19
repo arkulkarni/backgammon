@@ -2584,22 +2584,27 @@ function showHumanNoMoveDialog(){
   const partial=GAME.remaining.length<GAME.diceVals.length;
   const detail=partial?' cannot use the remaining dice.':' cannot move.';
   GAME.phase='nomove';clearHL();syncUI();
-  // Fast-forward lives here, on the popup: while trapped, tap it once and the
-  // computer's turns run at double speed until the board opens again. The
-  // toggle stays on the popup (gold + check) and does not close the dialog.
-  const ffOn=GAME.animSpeed===2;
-  openDlg('No legal moves',`${escHtml(GAME.nameYou)}${detail} Tap OKAY to pass the turn.`,[
+  const buttons=[
     {label:'OKAY',cls:'btnOkay',fn:()=>{
       hideOverlay();
       if(tok!==GAME.token)return;
       endHumanTurn(tok);
-    }},
-    {label:ffOn?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED',cls:'btnOkay ffBtn'+(ffOn?' ffOn':''),fn:()=>{
+    }}
+  ];
+  // Fast-forward only when no roll could ever help: the player is in the hole
+  // (on the bar) with all six entry points blocked. A merely unlucky roll, or
+  // unusable leftover dice, does not qualify. Once on, it stays on across the
+  // trapped rounds and the computer's turns keep running at double speed
+  // until a roll could be useful again; the toggle does not close the dialog.
+  if(isShutOut(GAME.state,GAME.sideHuman)){
+    const ffOn=GAME.animSpeed===2;
+    buttons.push({label:ffOn?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED',cls:'btnOkay ffBtn'+(ffOn?' ffOn':''),fn:()=>{
       GAME.animSpeed=GAME.animSpeed===2?1:2;
       const el=overlayCard.querySelector('.ffBtn');
       if(el){el.classList.toggle('ffOn',GAME.animSpeed===2);el.textContent=GAME.animSpeed===2?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED';}
-    }}
-  ]);
+    }});
+  }
+  openDlg('No legal moves',`${escHtml(GAME.nameYou)}${detail} Tap OKAY to pass the turn.`,buttons);
 }
 function enterMoving(dice){
   clearHL();GAME.selected=null;GAME.destsNow=[];
