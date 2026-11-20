@@ -182,7 +182,8 @@ button.offBadge.ready:active{transform:scale(.95);}
   box-shadow:0 2px 5px rgba(35,14,6,.38),inset 0 1px 2px rgba(78,13,8,.35);
 }
 .pbtn:disabled{opacity:.38;filter:saturate(.5);box-shadow:inset 0 1px 0 rgba(255,255,255,.15);}
-.btnOkay.ffOn{background:linear-gradient(180deg,#ffd98a 0%,#e8a83e 55%,#c07f1a 100%);color:#3a2408;text-shadow:0 1px 0 rgba(255,240,200,.6);border-color:#8a5a10;}
+.modalCard .toggleRow{margin:16px 0 0;padding:12px 0 0;border-top:1px solid rgba(255,220,170,.12);border-bottom:0;}
+.modalCard .toggleRow .dim{color:#b7a183;font-size:13px;line-height:1.4;margin-top:2px;}
 /* ---------- toast ---------- */
 #toast{
   position:fixed; left:44%; top:14px; z-index:70; pointer-events:none;
@@ -2006,7 +2007,7 @@ function renderReviewMove(row,showAlternative){
 }
 /* ================= controller ================= */
 const GAME={
-  phase:'setup',token:0,animSpeed:1,
+  phase:'setup',token:0,animSpeed:1,ffOn:false,
   difficulty:'medium',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
@@ -2015,6 +2016,51 @@ const GAME={
   pastGames:[],reviewReturn:null,stats:null,statsExisted:false,
 };
 const PREF={diff:'medium',humanBlack:true,tutor:false};
+/* Setup-screen memory: the last checker color + difficulty (+ tutor) are
+ * remembered per user. Local copy in localStorage (tagged with the signed-in
+ * uid when known); mirrored to a per-user Firestore doc by firebase-sync.js
+ * so the iPad and the phone agree. */
+const PREFS_KEY='bg-prefs';
+function loadPrefs(){
+  try{
+    const raw=localStorage.getItem(PREFS_KEY);if(!raw)return;
+    const d=JSON.parse(raw);if(!d||typeof d!=='object')return;
+    if(d.diff==='easy'||d.diff==='medium'||d.diff==='hard')PREF.diff=d.diff;
+    if(typeof d.humanBlack==='boolean')PREF.humanBlack=d.humanBlack;
+    if(typeof d.tutor==='boolean')PREF.tutor=d.tutor;
+  }catch(e){}
+}
+function prefsSnapshot(){
+  // Local = the in-memory PREF (always valid; savePrefs writes it on every
+  // change), with the stored uid + updatedAt so the cloud merge can compare.
+  let updatedAt=0,uid=null;
+  try{
+    const raw=localStorage.getItem(PREFS_KEY);
+    if(raw){const d=JSON.parse(raw);if(d&&typeof d==='object'){if(typeof d.updatedAt==='number')updatedAt=d.updatedAt;if(typeof d.uid==='string')uid=d.uid;}}
+  }catch(e){}
+  if(!uid&&typeof window.__bgUid==='string')uid=window.__bgUid;
+  return {uid,diff:PREF.diff,humanBlack:PREF.humanBlack,tutor:PREF.tutor,updatedAt};
+}
+function savePrefs(){
+  try{
+    localStorage.setItem(PREFS_KEY,JSON.stringify({uid:(typeof window.__bgUid==='string'?window.__bgUid:null),diff:PREF.diff,humanBlack:PREF.humanBlack,tutor:PREF.tutor,updatedAt:Date.now()}));
+  }catch(e){}
+  if(typeof window.__bgPrefsCloudSync==='function'){try{window.__bgPrefsCloudSync();}catch(e){}}
+}
+window.__bgLocalPrefs=function(){return prefsSnapshot();};
+window.__bgApplyPrefs=function(d){
+  if(!d||typeof d!=='object')return false;
+  let changed=false;
+  if((d.diff==='easy'||d.diff==='medium'||d.diff==='hard')&&d.diff!==PREF.diff){PREF.diff=d.diff;changed=true;}
+  if(typeof d.humanBlack==='boolean'&&d.humanBlack!==PREF.humanBlack){PREF.humanBlack=d.humanBlack;changed=true;}
+  if(typeof d.tutor==='boolean'&&d.tutor!==PREF.tutor){PREF.tutor=d.tutor;changed=true;}
+  if(!changed)return false;
+  try{
+    localStorage.setItem(PREFS_KEY,JSON.stringify({uid:(typeof window.__bgUid==='string'?window.__bgUid:null),diff:PREF.diff,humanBlack:PREF.humanBlack,tutor:PREF.tutor,updatedAt:(typeof d.updatedAt==='number'?d.updatedAt:Date.now())}));
+  }catch(e){}
+  if(GAME.phase==='setup')showSetup();
+  return true;
+};
 const overlay=$('overlay'),overlayCard=$('overlayCard'),btnRoll=$('btnRoll');
 function bumpToken(){GAME.token++;}
 function toast(msg,ms){
@@ -2040,10 +2086,10 @@ function showOverlay(html,cls){
   overlayCard.innerHTML=html;overlay.scrollTop=0;overlay.hidden=false;
 }
 function hideOverlay(){overlay.hidden=true;overlay.classList.remove('setupMode','reviewMode','outcomeMode');setReviewLayout(false);}
-function openDlg(title,bodyHtml,buttons){
+function openDlg(title,bodyHtml,buttons,extraHtml){
   const bh=title?`<h2>${title}</h2>`:'';
   const btns=buttons.map((b,i)=>`<button class="${b.cls||'btnOkay'}" data-bi="${i}">${b.label}</button>`).join('');
-  showOverlay(`${bh}<p>${bodyHtml}</p><div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px">${btns}</div>`,'modalCard');
+  showOverlay(`${bh}<p>${bodyHtml}</p>${extraHtml||''}<div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;margin-top:10px">${btns}</div>`,'modalCard');
   overlayCard.querySelectorAll('[data-bi]').forEach(el=>{
     el.addEventListener('click',()=>{Snd.btn();buttons[+el.getAttribute('data-bi')].fn();});
   });
@@ -2115,11 +2161,11 @@ function showSetup(){
     hideOverlay();startMatch();
   };
   overlayCard.querySelectorAll('[data-diff]').forEach(el=>el.onclick=()=>{
-    Snd.pick();PREF.diff=el.getAttribute('data-diff');
+    Snd.pick();PREF.diff=el.getAttribute('data-diff');savePrefs();
     overlayCard.querySelectorAll('[data-diff]').forEach(x=>x.classList.toggle('sel',x===el));
   });
   overlayCard.querySelectorAll('[data-color]').forEach(el=>el.onclick=()=>{
-    Snd.pick();PREF.humanBlack=el.getAttribute('data-color')==='black';
+    Snd.pick();PREF.humanBlack=el.getAttribute('data-color')==='black';savePrefs();
     overlayCard.querySelectorAll('[data-color]').forEach(x=>x.classList.toggle('sel',x===el));
   });
 }
@@ -2275,7 +2321,7 @@ function openMenu(){
   const mResign=$('mResign');if(mResign)mResign.onclick=()=>{Snd.btn();confirmResign();};
   $('mRules').onclick=()=>{Snd.btn();showRules();};
   $('mPastGames').onclick=()=>{Snd.btn();showPastGames();};
-  $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
+  $('mTutor').onclick=()=>{Snd.pick();PREF.tutor=!PREF.tutor;savePrefs();$('mTutor').classList.toggle('on',PREF.tutor);$('mTutor').setAttribute('aria-checked',String(PREF.tutor));};
 }
 function showWinStatsPopup(returnTo){
   showOverlay(`${winStatsHtml()}<button class="btnOkay" id="winStatsClose">OKAY</button>`,'modalCard');
@@ -2515,7 +2561,7 @@ function newGame(){
   GAME.state=newState();
   FLY_OFF_IDS.clear();
   GAME.remaining=[];GAME.snaps=[];GAME.history=[];GAME.turnHistoryStart=0;GAME.selected=null;GAME.destsNow=[];GAME.sourcesNow=[];
-  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;
+  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;GAME.ffOn=false;
   clearDice();clearHL();relabelTriangles();layout(GAME.state);updatePanel();syncUI();
   rolloff(tok);
 }
@@ -2594,23 +2640,31 @@ function showHumanNoMoveDialog(){
     {label:'OKAY',cls:'btnOkay',fn:()=>{
       hideOverlay();
       if(tok!==GAME.token)return;
+      // Apply the remembered switch value for the computer's turn.
+      GAME.animSpeed=GAME.ffOn?2:1;
       endHumanTurn(tok);
     }}
   ];
-  // Fast-forward only when no roll could ever help: the player is in the hole
-  // (on the bar) with all six entry points blocked. A merely unlucky roll, or
-  // unusable leftover dice, does not qualify. Once on, it stays on across the
-  // trapped rounds and the computer's turns keep running at double speed
-  // until a roll could be useful again; the toggle does not close the dialog.
+  let extra='';
+  // Fast-forward switch, only when no roll could ever help: the player is in
+  // the hole (on the bar) with all six entry points blocked. A merely unlucky
+  // roll, or unusable leftover dice, does not qualify. The switch value is
+  // remembered for the game (GAME.ffOn): once on, the computer's turns keep
+  // running at double speed on every trapped round until a roll could be
+  // useful again — the effective speed drops back to normal then, but the
+  // switch itself stays where the player left it.
   if(isShutOut(GAME.state,GAME.sideHuman)){
-    const ffOn=GAME.animSpeed===2;
-    buttons.push({label:ffOn?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED',cls:'btnOkay ffBtn'+(ffOn?' ffOn':''),fn:()=>{
-      GAME.animSpeed=GAME.animSpeed===2?1:2;
-      const el=overlayCard.querySelector('.ffBtn');
-      if(el){el.classList.toggle('ffOn',GAME.animSpeed===2);el.textContent=GAME.animSpeed===2?'⏩ DOUBLE SPEED ✓':'⏩ DOUBLE SPEED';}
-    }});
+    extra=`<div class="toggleRow"><div><b>Double speed</b><div class="dim">Computer turns play twice as fast while you're trapped</div></div><button type="button" class="switch${GAME.ffOn?' on':''}" id="ffSwitch" role="switch" aria-label="Double speed" aria-checked="${GAME.ffOn}"></button></div>`;
   }
-  openDlg('No legal moves',`${escHtml(GAME.nameYou)}${detail} Tap OKAY to pass the turn.`,buttons);
+  openDlg('No legal moves',`${escHtml(GAME.nameYou)}${detail} Tap OKAY to pass the turn.`,buttons,extra);
+  const sw=overlayCard.querySelector('#ffSwitch');
+  if(sw)sw.onclick=()=>{
+    Snd.pick();
+    GAME.ffOn=!GAME.ffOn;
+    GAME.animSpeed=GAME.ffOn?2:1;
+    sw.classList.toggle('on',GAME.ffOn);
+    sw.setAttribute('aria-checked',String(GAME.ffOn));
+  };
 }
 function enterMoving(dice){
   clearHL();GAME.selected=null;GAME.destsNow=[];
@@ -3551,6 +3605,7 @@ function init(){
   svg.addEventListener('contextmenu',e=>e.preventDefault());
   refreshIdentity();
   loadWinStats();
+  loadPrefs();
   showSetup();
   syncUI();
 }
@@ -4131,6 +4186,57 @@ function syncWinStatsCloud(){
 }
 window.__bgStatsCloudSync=syncWinStatsCloud;
 
+/* ---------------- setup prefs (per user) ----------------
+ * The setup screen's checker color + difficulty (+ tutor) are remembered
+ * per user. Local copy in localStorage (bg-prefs, tagged with the uid);
+ * mirrored here to a shared Firestore doc so the iPad and the phone agree.
+ * The doc lives in the games collection as id '__prefs': the existing rules
+ * already allow any doc id under users/{uid}/games, and readGameDocs skips
+ * docs without record/lastResult, so it never appears in Past Games.
+ * Merge rule (one user, one device at a time in practice): the newer
+ * updatedAt wins; the winner is pushed to both sides. A local copy tagged
+ * with a different uid belongs to another account and is never adopted. */
+var PREFS_DOC_ID='__prefs';
+function prefsDocRef(){
+  return state.db.collection('users').doc(state.uid).collection('games').doc(PREFS_DOC_ID);
+}
+function localPrefs(){
+  try{
+    if(typeof window.__bgLocalPrefs==='function'){var p=window.__bgLocalPrefs();if(p)return p;}
+  }catch(e){}
+  return null;
+}
+function prefsToCloud(p){
+  return {kind:'prefs',diff:p.diff,humanBlack:p.humanBlack,tutor:!!p.tutor,updatedAt:p.updatedAt||0};
+}
+function syncPrefsCloud(){
+  if(!state.ready||!state.db||!state.uid)return;
+  var L=localPrefs();
+  if(L&&L.uid&&L.uid!==state.uid)L=null; // another account's prefs: ignore
+  var ref=prefsDocRef();
+  ref.get().then(function(snap){
+    var d=snap.exists?snap.data():null;
+    if(!d){
+      if(L){try{ref.set(prefsToCloud(L)).catch(function(){});}catch(e){}}
+      return;
+    }
+    if(d.kind!=='prefs')return;
+    if(!L){
+      // No usable local prefs (fresh device or another account): adopt cloud.
+      try{if(typeof window.__bgApplyPrefs==='function')window.__bgApplyPrefs(d);}catch(e){}
+      return;
+    }
+    var cloudAt=typeof d.updatedAt==='number'?d.updatedAt:0;
+    var localAt=typeof L.updatedAt==='number'?L.updatedAt:0;
+    if(cloudAt>localAt){
+      try{if(typeof window.__bgApplyPrefs==='function')window.__bgApplyPrefs(d);}catch(e){}
+    }else{
+      try{ref.set(prefsToCloud(L)).catch(function(){});}catch(e){}
+    }
+  },function(){/* offline: local prefs still apply; next sync catches up */});
+}
+window.__bgPrefsCloudSync=syncPrefsCloud;
+
 /* Copy games saved under the pre-login anonymous id into the signed-in account. */
 function migrateAnonGames(docs){
   if(!docs.length)return Promise.resolve();
@@ -4149,6 +4255,7 @@ function onSignedIn(user){
   if(!user||user.isAnonymous) return;
   if(state.ready&&state.uid===user.uid) return; // already in (observer + redirect both fire)
   state.uid=user.uid;
+  try{window.__bgUid=user.uid;}catch(e){}
   state.ready=true;
   hideLoginGate();
   try{injectUserBar();}catch(e){}
@@ -4159,7 +4266,7 @@ function onSignedIn(user){
   // De-dupe by syncId: the same doc may be in both lists.
   var seen={},uniq=[];
   mig.forEach(function(d){var k=d&&d.syncId||null;if(k&&seen[k])return;if(k)seen[k]=1;uniq.push(d);});
-  var done=function(){loadCloudGames();try{syncWinStatsCloud();}catch(e){}};
+  var done=function(){loadCloudGames();try{syncWinStatsCloud();}catch(e){}try{syncPrefsCloud();}catch(e){}};
   if(uniq.length){
     migrateAnonGames(uniq).then(done,done);
   }else{
