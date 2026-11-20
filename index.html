@@ -2600,6 +2600,12 @@ function isShutOut(s,side){
   const entries=side==='w'?[18,19,20,21,22,23]:[0,1,2,3,4,5];
   return entries.every(i=>{const p=s.points[i];return p.length>=2&&p[0][0]===opp;});
 }
+// The trapped player's wait is over: they are on the bar and an entry point
+// just came free, so some roll now gives them a legal move. Double speed
+// stops at that moment — the AI turn checks this after every move.
+function trappedPlayerFreed(){
+  return !!GAME.ffOn&&!!GAME.state&&GAME.state.bar[GAME.sideHuman].length>0&&!isShutOut(GAME.state,GAME.sideHuman);
+}
 function humanTurn(){
   // Every route into the player's roll phase comes through here: a completed
   // computer turn, either no-move acknowledgement, and undoing a computer
@@ -2803,6 +2809,7 @@ async function aiTurn(openingDice){
     const movingId=movingCheckerId(GAME.state,m,GAME.sideAI);
     const hitId=m.hit?GAME.state.points[m.to][GAME.state.points[m.to].length-1]:null;
     GAME.state=applyMove(GAME.state,m,GAME.sideAI);GAME.turnMoves.push(Object.assign({},m));
+    if(trappedPlayerFreed())GAME.animSpeed=1;
     const st=GAME.state;
     if(m.to!=='off'){const top=st.points[m.to][st.points[m.to].length-1];if(CK[top])toFront(CK[top]);}
     if(hitId&&CK[hitId])toFront(CK[hitId]);
