@@ -2007,7 +2007,7 @@ function renderReviewMove(row,showAlternative){
 }
 /* ================= controller ================= */
 const GAME={
-  phase:'setup',token:0,animSpeed:1,ffOn:false,
+  phase:'setup',token:0,animSpeed:1,ffOn:false,ffAuto:false,
   difficulty:'medium',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
@@ -2561,7 +2561,7 @@ function newGame(){
   GAME.state=newState();
   FLY_OFF_IDS.clear();
   GAME.remaining=[];GAME.snaps=[];GAME.history=[];GAME.turnHistoryStart=0;GAME.selected=null;GAME.destsNow=[];GAME.sourcesNow=[];
-  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;GAME.ffOn=false;
+  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;GAME.ffOn=false;GAME.ffAuto=false;
   clearDice();clearHL();relabelTriangles();layout(GAME.state);updatePanel();syncUI();
   rolloff(tok);
 }
@@ -2619,10 +2619,16 @@ function humanTurn(){
   // Shut out regardless of the roll: don't make the player roll needlessly.
   if(isShutOut(GAME.state,GAME.sideHuman)){
     startTurnRecord(GAME.sideHuman,[]);
-    showHumanNoMoveDialog();
+    if(GAME.ffAuto){
+      // Double speed was chosen and OK pressed once: pass silently, no modal,
+      // until a legal move opens up.
+      endHumanTurn(GAME.token);
+    }else{
+      showHumanNoMoveDialog();
+    }
   }else{
-    // Board open again: back to normal speed.
-    GAME.animSpeed=1;
+    // A legal move opened up: double speed turns off entirely, switch included.
+    GAME.animSpeed=1;GAME.ffOn=false;GAME.ffAuto=false;
   }
 }
 async function onRoll(){
@@ -2648,17 +2654,21 @@ function showHumanNoMoveDialog(){
       if(tok!==GAME.token)return;
       // Apply the remembered switch value for the computer's turn.
       GAME.animSpeed=GAME.ffOn?2:1;
+      // One OK press with double speed on engages auto fast-forward for this
+      // trapped stretch: later rounds pass silently until a legal move opens
+      // up, and then double speed turns off entirely (switch included).
+      GAME.ffAuto=GAME.ffOn;
       endHumanTurn(tok);
     }}
   ];
   let extra='';
   // Fast-forward switch, only when no roll could ever help: the player is in
   // the hole (on the bar) with all six entry points blocked. A merely unlucky
-  // roll, or unusable leftover dice, does not qualify. The switch value is
-  // remembered for the game (GAME.ffOn): once on, the computer's turns keep
-  // running at double speed on every trapped round until a roll could be
-  // useful again — the effective speed drops back to normal then, but the
-  // switch itself stays where the player left it.
+  // roll, or unusable leftover dice, does not qualify. One OK press with the
+  // switch on auto-passes the rest of the trapped stretch at double speed,
+  // with no further modals; as soon as a legal move opens up, double speed
+  // turns off entirely, switch included, so the next trapped stretch starts
+  // with the switch off again.
   if(isShutOut(GAME.state,GAME.sideHuman)){
     extra=`<div class="toggleRow"><div><b>Double speed</b><div class="dim">Computer turns play twice as fast while you're trapped</div></div><button type="button" class="switch${GAME.ffOn?' on':''}" id="ffSwitch" role="switch" aria-label="Double speed" aria-checked="${GAME.ffOn}"></button></div>`;
   }
@@ -2712,19 +2722,20 @@ async function endHumanTurn(tok){
   if(tok!==GAME.token)return;
   aiTurn();
 }
+async function aiNoMoveContinue(tok){
+  if(tok!==GAME.token)return;
+  GAME.phase='endturn';syncUI();
+  clearDice();
+  await sleep(spd(250));
+  if(tok!==GAME.token)return;
+  humanTurn();
+}
 function showAiNoMoveDialog(tok,partial){
+  if(GAME.ffAuto){aiNoMoveContinue(tok);return;}
   GAME.phase='nomove';syncUI();
   const detail=partial?' cannot use the remaining dice.':' cannot move.';
   openDlg('No legal moves',`${escHtml(GAME.nameOpp)}${detail} Tap OKAY to continue.`,[
-    {label:'OKAY',cls:'btnOkay',fn:async()=>{
-      hideOverlay();
-      if(tok!==GAME.token)return;
-      GAME.phase='endturn';syncUI();
-      clearDice();
-      await sleep(spd(250));
-      if(tok!==GAME.token)return;
-      humanTurn();
-    }}
+    {label:'OKAY',cls:'btnOkay',fn:async()=>{hideOverlay();aiNoMoveContinue(tok);}}
   ]);
 }
 function startThinkIndicator(){
@@ -2809,7 +2820,7 @@ async function aiTurn(openingDice){
     const movingId=movingCheckerId(GAME.state,m,GAME.sideAI);
     const hitId=m.hit?GAME.state.points[m.to][GAME.state.points[m.to].length-1]:null;
     GAME.state=applyMove(GAME.state,m,GAME.sideAI);GAME.turnMoves.push(Object.assign({},m));
-    if(trappedPlayerFreed())GAME.animSpeed=1;
+    if(trappedPlayerFreed()){GAME.animSpeed=1;GAME.ffOn=false;GAME.ffAuto=false;}
     const st=GAME.state;
     if(m.to!=='off'){const top=st.points[m.to][st.points[m.to].length-1];if(CK[top])toFront(CK[top]);}
     if(hitId&&CK[hitId])toFront(CK[hitId]);
@@ -3004,6 +3015,7 @@ async function onUndo(){
   if(blocked)return;
   const s=GAME.history.pop();
   if(!s)return;
+  GAME.ffAuto=false;
   const tok=++GAME.token;
   GAME.phase='animating';
   GAME.state=cloneState(s.state);GAME.remaining=s.remaining.slice();GAME.diceVals=s.diceVals.slice();
