@@ -2001,7 +2001,7 @@ function renderReviewMove(row,showAlternative){
 }
 /* ================= controller ================= */
 const GAME={
-  phase:'setup',token:0,animSpeed:1,ffOn:false,ffAuto:false,
+  phase:'setup',token:0,animSpeed:1,ffOn:false,ffAuto:false,resignOffered:false,
   difficulty:'medium',
   nameYou:'You',nameOpp:'Computer',
   sideHuman:'b',sideAI:'w',
@@ -2216,6 +2216,40 @@ function confirmResign(){
   $('rsYes').onclick=()=>{Snd.btn();endGame(GAME.sideAI,{resigned:true,resignPoints:pts});};
   $('rsNo').onclick=()=>{Snd.btn();openMenu();};
 }
+/* ---------- computer offers to resign ----------
+ * When the engine says the computer's win chance is below the resign
+ * threshold (the same win % Game Review shows), it offers to resign at the
+ * end of its turn. No number is shown to the player — the offer just states
+ * the stakes, decided by the position like any finished game. Offered at
+ * most once per game: declining means it won't ask again. Accepting ends
+ * the game as a player win (confetti included) and counts in the win % stats.
+ * Never offered while fast-forwarding (ffAuto): the trapped stretch runs
+ * uninterrupted, and the offer comes at the next normal turn end instead. */
+const RESIGN_OFFER_THRESHOLD=0.10;
+function computerWinProb(){
+  try{
+    if(!(window.GNUbgEvaluator&&GNUbgEvaluator.ready))return null;
+    return positionEval(GAME.state,GAME.sideAI).win;
+  }catch(e){return null;}
+}
+function showComputerResignOffer(tok){
+  GAME.phase='resign';clearHL();syncUI();
+  const info=gammonInfo(GAME.state,GAME.sideHuman),pts=info.mult;
+  const ptsLabel=pts>=3?'3 points':pts===2?'2 points':'1 point';
+  showOverlay(`<h2>Computer offers to resign</h2>
+    <p class="dim">The computer offers to resign. Accepting counts as a ${info.label} &mdash; you get ${ptsLabel}, with confetti. Declining means it won't offer again this game.</p>
+    <div class="outcomeFooter"><button class="pbtn" id="rsAccept">ACCEPT</button><button class="pbtn" id="rsDecline">DECLINE</button></div>`,'modalCard');
+  $('rsAccept').onclick=()=>{Snd.btn();hideOverlay();if(tok!==GAME.token)return;endGame(GAME.sideHuman,{resigned:true,resignPoints:pts});};
+  $('rsDecline').onclick=()=>{Snd.btn();hideOverlay();if(tok!==GAME.token)return;humanTurn();};
+}
+function maybeOfferComputerResign(tok){
+  if(GAME.resignOffered||GAME.ffAuto)return false;
+  const wp=computerWinProb();
+  if(wp===null||wp>=RESIGN_OFFER_THRESHOLD)return false;
+  GAME.resignOffered=true;
+  showComputerResignOffer(tok);
+  return true;
+}
 function confirmAbandon(){
   showOverlay(`<h2>Abandon game?</h2>
     <p class="dim">This game won't be recorded or saved to Past Games.</p>
@@ -2224,8 +2258,9 @@ function confirmAbandon(){
   $('abNo').onclick=()=>{Snd.btn();openMenu();};
 }
 /* ---------- win % stats (menu card) ----------
- * Finished games only: a game counts when endGame runs without a resign.
- * Resigns, abandons and unfinished games never touch these counters.
+ * Finished games only: a game counts when endGame runs without a resign —
+ * except an accepted computer resignation, which counts as a player win.
+ * Player resigns, abandons and unfinished games never touch these counters.
  * Local copy lives in localStorage; when the Firebase sync module is present
  * it mirrors the same counters to a shared Firestore doc so the iPad and the
  * phone agree (see firebase-sync.js). */
@@ -2536,7 +2571,7 @@ function refreshIdentity(){
   $('badgeOpp').className='offBadge '+(GAME.sideAI==='b'?'black':'white');
 }
 function syncUI(){
-  const undoBlocked=['setup','newgame','rolloff','rolling','animating','tutor','over'].includes(GAME.phase);
+  const undoBlocked=['setup','newgame','rolloff','rolling','animating','tutor','over','resign'].includes(GAME.phase);
   $('btnUndo').disabled=undoBlocked||GAME.history.length===0;
   pinRollButton();
   setRollVisible(GAME.phase==='preroll');
@@ -2555,7 +2590,7 @@ function newGame(){
   GAME.state=newState();
   FLY_OFF_IDS.clear();
   GAME.remaining=[];GAME.snaps=[];GAME.history=[];GAME.turnHistoryStart=0;GAME.selected=null;GAME.destsNow=[];GAME.sourcesNow=[];
-  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;GAME.ffOn=false;GAME.ffAuto=false;
+  GAME.record=[];GAME.turnStart=null;GAME.turnMoves=[];GAME.turnRecorded=false;GAME.lastResult=null;GAME.reviewReturn=null;GAME.animSpeed=1;GAME.ffOn=false;GAME.ffAuto=false;GAME.resignOffered=false;
   clearDice();clearHL();relabelTriangles();layout(GAME.state);updatePanel();syncUI();
   rolloff(tok);
 }
@@ -2844,6 +2879,7 @@ async function aiTurn(openingDice){
   clearDice();
   await sleep(spd(250));
   if(tok!==GAME.token)return;
+  if(maybeOfferComputerResign(tok))return;
   humanTurn();
 }
 /* ---------- move history / human moves ---------- */
@@ -3005,7 +3041,7 @@ async function onOffTap(){
   await applyHumanChoice(choice);
 }
 async function onUndo(){
-  const blocked=['setup','newgame','rolloff','rolling','animating','tutor','over'].includes(GAME.phase);
+  const blocked=['setup','newgame','rolloff','rolling','animating','tutor','over','resign'].includes(GAME.phase);
   if(blocked)return;
   const s=GAME.history.pop();
   if(!s)return;
@@ -3507,7 +3543,7 @@ function renderResultDialog(){
   const youAccLabel=GAME.nameYou==='You'?'Your accuracy':youName+'’s accuracy';
   const playerWon=r.winner===GAME.sideHuman;
   const secondPerson=playerWon&&String(r.name).trim().toLowerCase()==='you';
-  const resultText=r.resigned?`You ${resignLabel(r.info.mult||1)} — Computer wins.`:(secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`);
+  const resultText=r.resigned?(playerWon?`Computer ${resignLabel(r.info.mult||1)} — You win.`:`You ${resignLabel(r.info.mult||1)} — Computer wins.`):(secondPerson?'You win the game!':`${escHtml(r.name)} wins the game!`);
   const celebration=playerWon?'<span class="resultCelebration" aria-hidden="true">★</span>':'';
   const accuracy=s=>s.accuracy==null?'—':s.accuracy;
   const qualityRow=(label,a,b)=>`<div>${label}</div><div class="qualityNum">${a}</div><div class="qualityNum">${b}</div>`;
@@ -3535,12 +3571,12 @@ function endGame(winner,opts){
   const wname=winner===GAME.sideHuman?GAME.nameYou:GAME.nameOpp;
   GAME.lastResult={winner,name:wname,points:pts,state:cloneState(GAME.state),info,resigned:!!opts.resigned};
   const won=winner===GAME.sideHuman;
-  if(!opts.resigned)recordWinStats(GAME.difficulty,won); // win % stats: finished games only, never resigns
+  if(!opts.resigned||won)recordWinStats(GAME.difficulty,won); // an accepted computer resignation counts as a win; a player resignation never counts
   GAME.pastGames.unshift({
     record:JSON.parse(JSON.stringify(GAME.record)),lastResult:JSON.parse(JSON.stringify(GAME.lastResult)),
     nameYou:'You',nameOpp:'Computer',sideHuman:GAME.sideHuman,sideAI:GAME.sideAI,
     diffKey:GAME.difficulty,diffLabel:(AI_TIERS[GAME.difficulty]||{}).label||GAME.difficulty,
-    resultLabel:opts.resigned?'You resigned':(won?'You won':'Computer won'),scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
+    resultLabel:opts.resigned?(won?'Computer resigned':'You resigned'):(won?'You won':'Computer won'),scoreLabel:`${pts} point${pts===1?'':'s'} · ${info.label}`,
     dateLabel:new Intl.DateTimeFormat(undefined,{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}).format(new Date())
   });
   if(GAME.pastGames.length>10)GAME.pastGames.length=10;
